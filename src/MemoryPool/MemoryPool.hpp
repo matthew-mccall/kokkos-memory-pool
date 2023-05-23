@@ -12,7 +12,7 @@
 
 #include "Kokkos_Core.hpp"
 
-constexpr size_t DEFAULT_CHUNK_SIZE = 1024;
+constexpr size_t DEFAULT_CHUNK_SIZE = 128;
 
 class MemoryPool {
 
@@ -84,7 +84,7 @@ public:
         assert(allocations.find(beginChunk) != allocations.end());
         auto [beginIndex, endIndex] = allocations[beginChunk]; // [begin, end)
 
-        Kokkos::parallel_for("MemoryPool::deallocate", endIndex - beginIndex, KOKKOS_LAMBDA(size_t i) {
+        Kokkos::parallel_for("MemoryPool::deallocate", endIndex - beginIndex, [beginIndex = beginIndex, this](size_t i) { // Apple Clang has issues with capturing structured bindings
             pool(beginIndex + i) = Chunk();
             pool(beginIndex + i).next = beginIndex + i + 1; // Rebuild chunks and list structure
         });
@@ -106,7 +106,7 @@ public:
 
         while (current && *current < beginIndex) { // Find the chunk before the beginIndex
             last = *current;
-            current = *pool(current).next;
+            current = pool(*current).next;
         }
 
         pool(last).next = beginIndex;

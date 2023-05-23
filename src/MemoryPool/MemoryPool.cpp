@@ -14,3 +14,4 @@ MemoryPool::MemoryPool(size_t numChunks) : pool("pool", numChunks) {
     pool(numChunks - 1).next = std::nullopt;
     Kokkos::fence();
 }
+

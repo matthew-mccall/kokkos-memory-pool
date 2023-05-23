@@ -1,4 +1,4 @@
-# kokkos-memory-pool
+# kokkos-memory-pool [![CMake](https://github.com/matthew-mccall/kokkos-memory-pool/actions/workflows/cmake.yml/badge.svg)](https://github.com/matthew-mccall/kokkos-memory-pool/actions/workflows/cmake.yml)
 A implementation of a memory pool in Kokkos.
 
 ### Build

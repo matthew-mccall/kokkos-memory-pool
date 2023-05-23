@@ -24,28 +24,37 @@ class MemoryPool {
 public:
     explicit MemoryPool(size_t numChunks);
 
+    /**
+     * Allocates a view of DataType of size numElements
+     * @tparam DataType The type of the view to allocate
+     * @param numElements The number of elements of DataType to allocate
+     * @return A view of DataType of size numElements or an empty view if there is not enough space
+     */
     template<typename DataType>
     Kokkos::View<DataType*> allocate(size_t numElements) {
+        if (!freeList) {
+            return {};
+        }
+
         // Find the smallest sequence of chunks that can hold numElements
         size_t requestedSize = numElements * sizeof(DataType);
 
-        // TODO: What if the pool is full?
         std::optional<size_t> current = freeList;
-        size_t last = freeList.value_or(0); // The chunk before (that pointed to) the current chunk
-        size_t beforeBeginSequence = freeList.value_or(0); // The chunk before the current sequence
-        size_t beginSequence = freeList.value_or(0); // The first chunk in the current sequence
+        size_t beforeBeginSequence = *freeList; // The chunk before the current sequence
+        size_t beginSequence = *freeList; // The first chunk in the current sequence
         size_t currentSize = 0;
 
         while (current) {
             currentSize += DEFAULT_CHUNK_SIZE;
+            auto next = pool(*current).next;
             if (currentSize >= requestedSize) {
-                auto allocatedBlocksIndices = std::make_pair(beginSequence, *current + 1);
+                auto allocatedBlocksIndices = std::make_pair(beginSequence, *current + 1); // [begin, end)
                 auto subview = Kokkos::subview(pool, allocatedBlocksIndices);
 
-                if (beginSequence == 0) {
-                    freeList = *pool(*current).next;
+                if (beginSequence == *freeList) {
+                    freeList = next;
                 } else {
-                    pool(beforeBeginSequence).next = *pool(*current).next;
+                    pool(beforeBeginSequence).next = next;
                 }
 
                 Chunk* beginChunk = subview.data();
@@ -56,38 +65,16 @@ public:
             }
 
             // If the next chunk is not the next chunk in the pool, then the current sequence is broken
-            if (*pool(*current).next != *current + 1) {
+            if (next && *next != *current + 1) {
                 currentSize = 0;
                 beforeBeginSequence = *current;
-                beginSequence = *pool(*current).next;
+                beginSequence = *next;
             }
 
-            last = *current;
-            current = pool(*current).next;
+            current = next;
         }
 
-        // If we get here, then we need to allocate more chunks
-        size_t numChunks = (requestedSize / DEFAULT_CHUNK_SIZE) + 1;
-        Kokkos::resize(pool, pool.extent(0) + numChunks);
-
-        Kokkos::parallel_for("MemoryPool::allocate", numChunks - 1, KOKKOS_LAMBDA(size_t i) {
-            pool(last + i).next = i + 1;
-        });
-
-        pool(last + numChunks - 1).next = std::nullopt;
-
-        auto allocatedBlocksIndices = std::make_pair(last, last + numChunks);
-        auto subview = Kokkos::subview(pool, Kokkos::make_pair(last, last + numChunks));
-
-        if (last == 0) {
-            freeList = *pool(last).next;
-        }
-
-        Chunk* beginChunk = subview.data();
-        assert(beginChunk == &pool(beginSequence));
-
-        allocations[beginChunk] = allocatedBlocksIndices;
-        return Kokkos::View<DataType*>(reinterpret_cast<DataType *>(beginChunk), numElements);
+        return {};
     }
 
     template<typename DataType>
@@ -95,31 +82,35 @@ public:
         auto* beginChunk = reinterpret_cast<Chunk*>(view.data());
 
         assert(allocations.find(beginChunk) != allocations.end());
-        auto allocatedBlocksIndices = allocations[beginChunk];
+        auto [beginIndex, endIndex] = allocations[beginChunk]; // [begin, end)
 
-        Kokkos::parallel_for("MemoryPool::deallocate", allocatedBlocksIndices.second - allocatedBlocksIndices.first, KOKKOS_LAMBDA(size_t i) {
-            pool(allocatedBlocksIndices.first + i) = Chunk();
-            pool(allocatedBlocksIndices.first + i).next = allocatedBlocksIndices.first + i + 1;
+        Kokkos::parallel_for("MemoryPool::deallocate", endIndex - beginIndex, KOKKOS_LAMBDA(size_t i) {
+            pool(beginIndex + i) = Chunk();
+            pool(beginIndex + i).next = beginIndex + i + 1; // Rebuild chunks and list structure
         });
 
-        if (!freeList) {
-            freeList = allocatedBlocksIndices.first;
-            pool(allocatedBlocksIndices.second - 1).next = std::nullopt;
+        if (!freeList) { // If the free list is empty, then the beginIndex is the new free list
+            freeList = beginIndex;
+            pool(endIndex - 1).next = std::nullopt;
             return;
         }
 
-        if (allocatedBlocksIndices.first < *freeList) {
-            pool(allocatedBlocksIndices.second - 1).next = freeList;
-            freeList = allocatedBlocksIndices.first;
+        if (beginIndex < *freeList) { // If the beginIndex is less than the free list, then the beginIndex is the new free list
+            pool(endIndex - 1).next = freeList;
+            freeList = beginIndex;
             return;
         }
 
         std::optional<size_t> current = freeList;
         size_t last = *freeList;
-        while (*current < allocatedBlocksIndices.first && current) {
+
+        while (current && *current < beginIndex) { // Find the chunk before the beginIndex
             last = *current;
             current = *pool(current).next;
         }
+
+        pool(last).next = beginIndex;
+        pool(endIndex - 1).next = current;
     }
 
 private:

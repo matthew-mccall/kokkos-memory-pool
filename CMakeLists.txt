@@ -1,8 +1,12 @@
 cmake_minimum_required(VERSION 3.25)
 project(kokkos_memory_pool)
 
-add_subdirectory(libs/kokkos)
-include_directories(${Kokkos_INCLUDE_DIRS_RET})
+find_package(Kokkos)
+
+if (NOT Kokkos_FOUND)
+    add_subdirectory(libs/kokkos)
+    include_directories(${Kokkos_INCLUDE_DIRS_RET})
+endif ()
 
 add_subdirectory(libs/Catch2)
 

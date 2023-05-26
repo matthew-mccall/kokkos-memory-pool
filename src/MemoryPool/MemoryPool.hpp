@@ -88,9 +88,11 @@ public:
 
         allocations.erase(itr);
 
-        Kokkos::parallel_for("MemoryPool::deallocate", endIndex - beginIndex, [beginIndex = beginIndex, this](int32_t i) { // Apple Clang has issues with capturing structured bindings
-            pool(beginIndex + i) = Chunk();
-            pool(beginIndex + i).next = beginIndex + i + 1; // Rebuild chunks and list structure
+        auto poolRef = pool;
+
+        Kokkos::parallel_for("MemoryPool::deallocate", endIndex - beginIndex, [beginIndex = beginIndex, poolRef](int32_t i) { // Apple Clang has issues with capturing structured bindings
+            poolRef(beginIndex + i) = Chunk();
+            poolRef(beginIndex + i).next = beginIndex + i + 1; // Rebuild chunks and list structure
         });
 
         if (freeList < 0) { // If the free list is empty, then the beginIndex is the new free list

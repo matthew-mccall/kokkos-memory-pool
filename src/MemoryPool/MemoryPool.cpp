@@ -8,8 +8,10 @@
 MemoryPool::MemoryPool(size_t numChunks) : pool("pool", numChunks) {
     freeList = 0;
 
+    auto poolRef = pool;
+
     Kokkos::parallel_for("MemoryPool::MemoryPool", numChunks - 1, KOKKOS_LAMBDA(int32_t i) {
-        pool(i).next = i + 1;
+        poolRef(i).next = i + 1;
     });
 
     pool(numChunks - 1).next = -1;

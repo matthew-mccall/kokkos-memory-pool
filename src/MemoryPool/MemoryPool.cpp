@@ -8,11 +8,11 @@
 MemoryPool::MemoryPool(size_t numChunks) : pool("pool", numChunks) {
     freeList = 0;
 
-    Kokkos::parallel_for("MemoryPool::MemoryPool", numChunks - 1, KOKKOS_LAMBDA(size_t i) {
+    Kokkos::parallel_for("MemoryPool::MemoryPool", numChunks - 1, KOKKOS_LAMBDA(int32_t i) {
         pool(i).next = i + 1;
     });
 
-    pool(numChunks - 1).next = std::nullopt;
+    pool(numChunks - 1).next = -1;
     Kokkos::fence();
 }
 

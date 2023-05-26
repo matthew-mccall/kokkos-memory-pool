@@ -18,8 +18,8 @@ constexpr size_t DEFAULT_CHUNK_SIZE = 128;
 class MemoryPool {
 
     struct Chunk {
-        std::optional<size_t> next;
-        std::byte data[DEFAULT_CHUNK_SIZE - sizeof(Chunk*)];
+        int32_t next;
+        std::byte data[DEFAULT_CHUNK_SIZE - sizeof(int32_t)];
     };
 
 public:
@@ -33,26 +33,26 @@ public:
      */
     template<typename DataType>
     Kokkos::View<DataType*> allocate(size_t numElements) {
-        if (!freeList) {
+        if (freeList < 0) {
             return {};
         }
 
         // Find the smallest sequence of chunks that can hold numElements
         size_t requestedSize = numElements * sizeof(DataType);
 
-        std::optional<size_t> current = freeList;
-        size_t beforeBeginSequence = *freeList; // The chunk before the current sequence
-        size_t beginSequence = *freeList; // The first chunk in the current sequence
+        int32_t current = freeList;
+        int32_t beforeBeginSequence = freeList; // The chunk before the current sequence
+        int32_t beginSequence = freeList; // The first chunk in the current sequence
         size_t currentSize = 0;
 
-        while (current) {
+        while (current >= 0) {
             currentSize += DEFAULT_CHUNK_SIZE;
-            auto next = pool(*current).next;
+            auto next = pool(current).next;
             if (currentSize >= requestedSize) {
-                auto allocatedBlocksIndices = std::make_pair(beginSequence, *current + 1); // [begin, end)
+                auto allocatedBlocksIndices = std::make_pair(beginSequence, current + 1); // [begin, end)
                 auto subview = Kokkos::subview(pool, allocatedBlocksIndices);
 
-                if (beginSequence == *freeList) {
+                if (beginSequence == freeList) {
                     freeList = next;
                 } else {
                     pool(beforeBeginSequence).next = next;
@@ -66,10 +66,10 @@ public:
             }
 
             // If the next chunk is not the next chunk in the pool, then the current sequence is broken
-            if (next && *next != *current + 1) {
+            if ((next >= 0) && next != current + 1) {
                 currentSize = 0;
-                beforeBeginSequence = *current;
-                beginSequence = *next;
+                beforeBeginSequence = current;
+                beginSequence = next;
             }
 
             current = next;
@@ -88,29 +88,29 @@ public:
 
         allocations.erase(itr);
 
-        Kokkos::parallel_for("MemoryPool::deallocate", endIndex - beginIndex, [beginIndex = beginIndex, this](size_t i) { // Apple Clang has issues with capturing structured bindings
+        Kokkos::parallel_for("MemoryPool::deallocate", endIndex - beginIndex, [beginIndex = beginIndex, this](int32_t i) { // Apple Clang has issues with capturing structured bindings
             pool(beginIndex + i) = Chunk();
             pool(beginIndex + i).next = beginIndex + i + 1; // Rebuild chunks and list structure
         });
 
-        if (!freeList) { // If the free list is empty, then the beginIndex is the new free list
+        if (freeList < 0) { // If the free list is empty, then the beginIndex is the new free list
             freeList = beginIndex;
-            pool(endIndex - 1).next = std::nullopt;
+            pool(endIndex - 1).next = -1;
             return;
         }
 
-        if (beginIndex < *freeList) { // If the beginIndex is less than the free list, then the beginIndex is the new free list
+        if (beginIndex < freeList) { // If the beginIndex is less than the free list, then the beginIndex is the new free list
             pool(endIndex - 1).next = freeList;
             freeList = beginIndex;
             return;
         }
 
-        std::optional<size_t> current = freeList;
-        size_t last = *freeList;
+        int32_t current = freeList;
+        int32_t last = freeList;
 
-        while (current && *current < beginIndex) { // Find the chunk before the beginIndex
-            last = *current;
-            current = pool(*current).next;
+        while ((current >= 0) && current < beginIndex) { // Find the chunk before the beginIndex
+            last = current;
+            current = pool(current).next;
         }
 
         pool(last).next = beginIndex;
@@ -123,8 +123,8 @@ public:
 
 private:
     Kokkos::View<MemoryPool::Chunk*> pool;
-    std::optional<size_t> freeList;
-    std::map<Chunk*, std::pair<size_t, size_t>> allocations;
+    int32_t freeList;
+    std::map<Chunk*, std::pair<int32_t, int32_t>> allocations;
 };
 
 #endif //KOKKOS_MEMORY_POOL_MEMORYPOOL_HPP

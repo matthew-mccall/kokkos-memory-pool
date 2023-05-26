@@ -9,6 +9,7 @@
 #include <map>
 #include <optional>
 #include <utility>
+#include <ostream>
 
 #include "Kokkos_Core.hpp"
 
@@ -81,8 +82,11 @@ public:
     void deallocate(Kokkos::View<DataType*> view) {
         auto* beginChunk = reinterpret_cast<Chunk*>(view.data());
 
-        assert(allocations.find(beginChunk) != allocations.end());
+        auto itr = allocations.find(beginChunk);
+        assert(itr != allocations.end());
         auto [beginIndex, endIndex] = allocations[beginChunk]; // [begin, end)
+
+        allocations.erase(itr);
 
         Kokkos::parallel_for("MemoryPool::deallocate", endIndex - beginIndex, [beginIndex = beginIndex, this](size_t i) { // Apple Clang has issues with capturing structured bindings
             pool(beginIndex + i) = Chunk();
@@ -112,6 +116,10 @@ public:
         pool(last).next = beginIndex;
         pool(endIndex - 1).next = current;
     }
+
+    void print();
+
+    friend std::ostream &operator<<(std::ostream &os, const MemoryPool &pool);
 
 private:
     Kokkos::View<MemoryPool::Chunk*> pool;

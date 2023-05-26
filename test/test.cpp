@@ -22,27 +22,33 @@ TEST_CASE("Memory Pool allocates successfully", "[MemoryPool]") {
 
     SECTION("Allocating from a new pool") {
         auto view = pool.allocate<int>(1);
+        CAPTURE(pool);
         REQUIRE(view.size() == 1);
     }
 
     SECTION("Allocating from a pool with one chunk used") {
         auto view = pool.allocate<int>(1);
+        CAPTURE(pool);
         REQUIRE(view.size() == 1);
 
         auto view2 = pool.allocate<int>(1);
+        CAPTURE(pool);
         REQUIRE(view2.size() == 1);
     }
 
     SECTION("Allocating custom type") {
         auto view = pool.allocate<VeryLargeStruct>(1);
+        CAPTURE(pool);
         REQUIRE(view.size() == 1);
     }
 
     SECTION("Allocating from a full pool returns an empty view") {
         auto view = pool.allocate<VeryLargeStruct>(1);
+        CAPTURE(pool);
         REQUIRE(view.size() == 1);
 
         auto view2 = pool.allocate<VeryLargeStruct>(1);
+        CAPTURE(pool);
         REQUIRE(view2.size() == 0);
     }
 }
@@ -52,48 +58,78 @@ TEST_CASE("Memory Pool allocates and deallocates successfully", "[MemoryPool]") 
 
     SECTION("Allocating and deallocating from a new pool") {
         auto view = pool.allocate<int>(1);
+        CAPTURE(pool);
         REQUIRE(view.size() == 1);
 
         pool.deallocate(view);
+        CAPTURE(pool);
     }
 
-    SECTION("Allocating and deallocating from a pool with one chunk used") {
+    SECTION("Allocating 2 chunks and deallocating the first chunk first") {
         auto view = pool.allocate<int>(1);
+        CAPTURE(pool);
         REQUIRE(view.size() == 1);
 
         auto view2 = pool.allocate<int>(1);
+        CAPTURE(pool);
         REQUIRE(view2.size() == 1);
 
         pool.deallocate(view);
+        CAPTURE(pool); // -X--
         pool.deallocate(view2);
+        CAPTURE(pool); // ----
+    }
+
+    SECTION("Allocating 2 chunks and deallocating the second chunk first") {
+        auto view = pool.allocate<int>(1);
+        CAPTURE(pool);
+        REQUIRE(view.size() == 1);
+
+        auto view2 = pool.allocate<int>(1);
+        CAPTURE(pool);
+        REQUIRE(view2.size() == 1);
+
+        pool.deallocate(view2);
+        CAPTURE(pool); // X---
+        pool.deallocate(view);
+        CAPTURE(pool); // ----
     }
 
     SECTION("Allocating and deallocating custom type") {
         auto view = pool.allocate<VeryLargeStruct>(1);
+        CAPTURE(pool);
         REQUIRE(view.size() == 1);
 
         pool.deallocate(view);
+        CAPTURE(pool);
     }
 
     SECTION("Allocating and deallocating from a full pool returns an empty view") {
         auto view = pool.allocate<VeryLargeStruct>(1);
+        CAPTURE(pool);
         REQUIRE(view.size() == 1);
 
         auto view2 = pool.allocate<VeryLargeStruct>(1);
+        CAPTURE(pool);
         REQUIRE(view2.size() == 0);
 
         pool.deallocate(view);
+        CAPTURE(pool);
     }
 
     SECTION("Allocating and deallocating from a pool with one chunk used returns a non-empty view") {
         auto view = pool.allocate<VeryLargeStruct>(1);
+        CAPTURE(pool);
         REQUIRE(view.size() == 1);
 
         auto view2 = pool.allocate<VeryLargeStruct>(1);
         REQUIRE(view2.size() == 0);
 
         pool.deallocate(view);
+        CAPTURE(pool);
+
         auto view3 = pool.allocate<VeryLargeStruct>(1);
+        CAPTURE(pool);
         REQUIRE(view3.size() == 1);
     }
 }

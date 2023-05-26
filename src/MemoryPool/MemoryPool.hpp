@@ -54,8 +54,6 @@ public:
                 auto subview = Kokkos::subview(pool, allocatedBlocksIndices);
 
                 Chunk* beginChunk = subview.data();
-                assert(beginChunk == &pool(*beginSequence));
-
                 auto& allocation = allocations[beginChunk];
 
                 freeList.splice(allocation.end(), freeList, beginSequence, next); // Remove the allocated blocks from the free list

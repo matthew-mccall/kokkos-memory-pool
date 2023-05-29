@@ -38,35 +38,33 @@ public:
 
         // Find the smallest sequence of chunks that can hold numElements
         size_t requestedSize = numElements * sizeof(DataType);
+        uint32_t requestedChunks = (requestedSize / DEFAULT_CHUNK_SIZE);
+
+        if (requestedSize % DEFAULT_CHUNK_SIZE) {
+            requestedChunks++;
+        }
 
         auto current = freeList.begin();
-        auto beginSequence = freeList.begin(); // The first chunk in the current sequence
-        size_t currentSize = 0;
 
         while (current != freeList.end()) {
-            currentSize += DEFAULT_CHUNK_SIZE;
+            auto [beginIndex, endIndex] = *current;
 
-            auto next = current;
-            next++;
-
-            if (currentSize >= requestedSize) {
-                auto allocatedBlocksIndices = std::make_pair(*beginSequence, *current + 1); // [begin, end)
-                auto subview = Kokkos::subview(pool, allocatedBlocksIndices);
-
+            if (beginIndex + requestedChunks <= endIndex) {
+                auto allocatedChunkIndices = std::make_pair(beginIndex, beginIndex + requestedChunks);
+                auto subview = Kokkos::subview(pool, allocatedChunkIndices);
                 Chunk* beginChunk = subview.data();
-                auto& allocation = allocations[beginChunk];
+                allocations[beginChunk] = allocatedChunkIndices;
 
-                freeList.splice(allocation.end(), freeList, beginSequence, next); // Remove the allocated blocks from the free list
-                return Kokkos::View<DataType*>(reinterpret_cast<DataType *>(beginChunk), numElements);
+                if (endIndex == beginIndex + requestedChunks) {
+                    freeList.erase(current);
+                } else {
+                    current->first = beginIndex + requestedChunks;
+                }
+
+                return Kokkos::View<DataType*>(reinterpret_cast<DataType*>(beginChunk), numElements);
             }
 
-            // If the next chunk is not the next chunk in the pool, then the current sequence is broken
-            if ((next != freeList.end()) && *next != *current + 1) {
-                currentSize = 0;
-                beginSequence = next;
-            }
-
-            current = next;
+            current++;
         }
 
         return {};
@@ -78,25 +76,38 @@ public:
 
         auto itr = allocations.find(beginChunk);
         assert(itr != allocations.end());
-        auto [ptr, chunks] = *itr; // [begin, end)
+        auto [ptr, chunkIndices] = *itr; // [begin, end)
 
         allocations.erase(itr);
 
         auto current = freeList.begin();
-
-        while (current != freeList.end() && *current < chunks.front()) {
+        while (current != freeList.end() && current->first < chunkIndices.second) {
             current++;
         }
 
-        freeList.splice(current, chunks);
+        freeList.insert(current, chunkIndices);
+
+        // Merge adjacent free chunks
+        current = freeList.begin();
+        while (current != freeList.end()) {
+            auto next = current;
+            next++;
+
+            if (next != freeList.end() && current->second == next->first) {
+                current->second = next->second;
+                freeList.erase(next);
+            }
+
+            current++;
+        }
     }
 
     friend std::ostream &operator<<(std::ostream &os, const MemoryPool &pool);
 
 private:
     Kokkos::View<MemoryPool::Chunk*> pool;
-    std::list<int32_t> freeList;
-    std::map<Chunk*, std::list<int32_t>> allocations;
+    std::list<std::pair<uint32_t, uint32_t>> freeList;
+    std::map<Chunk*, std::pair<int32_t, int32_t>> allocations;
 };
 
 #endif //KOKKOS_MEMORY_POOL_MEMORYPOOL_HPP

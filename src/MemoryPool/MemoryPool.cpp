@@ -6,16 +6,14 @@
 #include "MemoryPool.hpp"
 
 MemoryPool::MemoryPool(size_t numChunks) : pool("pool", numChunks) {
-    for (int i = 0; i < numChunks; i++) {
-        freeList.push_back(i);
-    }
+    freeList.emplace_back(0, numChunks);
 }
 
 std::ostream &operator<<(std::ostream &os, const MemoryPool &pool) {
     std::vector<bool> used(pool.pool.size(), false);
 
     for (const auto& [ptr, indices]: pool.allocations) {
-        for (int i: indices) {
+        for (int i = indices.first; i < indices.second; i++) {
             used[i] = true;
         }
     }

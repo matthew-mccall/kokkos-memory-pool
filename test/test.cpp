@@ -11,6 +11,10 @@ struct VeryLargeStruct {
     std::byte data[512];
 };
 
+struct LargeStruct {
+    std::byte data[256];
+};
+
 int main(int argc, char* argv[]) {
     Kokkos::ScopeGuard guard(argc, argv);
     int result = Catch::Session().run(argc, argv);
@@ -78,6 +82,23 @@ TEST_CASE("Memory Pool allocates and deallocates successfully", "[MemoryPool]") 
         CAPTURE(pool); // -X--
         pool.deallocate(view2);
         CAPTURE(pool); // ----
+    }
+
+    SECTION("Allocating a large chunk from a pool with one chunk used") {
+        auto view = pool.allocate<int>(1);
+        CAPTURE(pool);
+        REQUIRE(view.size() == 1);
+
+        auto view2 = pool.allocate<int>(1);
+        CAPTURE(pool);
+        REQUIRE(view2.size() == 1);
+
+        pool.deallocate(view);
+        CAPTURE(pool); // -X--
+
+        auto view3 = pool.allocate<LargeStruct>(1);
+        CAPTURE(pool); // -XXX
+        REQUIRE(view3.size() == 1);
     }
 
     SECTION("Allocating 2 chunks and deallocating the second chunk first") {

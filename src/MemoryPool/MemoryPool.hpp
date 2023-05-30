@@ -105,7 +105,7 @@ public:
     friend std::ostream &operator<<(std::ostream &os, const MemoryPool &pool);
 
 private:
-    Kokkos::View<MemoryPool::Chunk*> pool;
+    Kokkos::View<MemoryPool::Chunk*, Kokkos::LayoutRight> pool;
     std::list<std::pair<uint32_t, uint32_t>> freeList;
     std::map<Chunk*, std::pair<int32_t, int32_t>> allocations;
 };

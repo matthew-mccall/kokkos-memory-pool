@@ -2,8 +2,11 @@
 // Created by Matthew McCall on 5/23/23.
 //
 
+#include <chrono>
+
 #include "catch2/catch_session.hpp"
 #include "catch2/catch_test_macros.hpp"
+#include "catch2/benchmark/catch_benchmark.hpp"
 
 #include "MemoryPool/MemoryPool.hpp"
 
@@ -215,4 +218,31 @@ TEST_CASE("Memory Pool allocates and deallocates successfully", "[MemoryPool]") 
         REQUIRE(view3.size() == 2);
         EXPECT_CHUNKS_AND_ALLOCS_IN_POOL(pool, (EXPECTED_CHUNKS(VeryLargeStruct) * 4), 2);
     }
+}
+
+TEST_CASE("Benchmarks", "[Benchmarks]") {
+    BENCHMARK_ADVANCED("Kokkos Allocating 1,000 Views of size 1024")(Catch::Benchmark::Chronometer meter) {
+        std::vector<Kokkos::View<int[1024]>> views(1'000);
+
+        meter.measure([&] {
+            for (auto& view : views) {
+                view = Kokkos::View<int[1024]>("view", 1024);
+            }
+
+            return views.size();
+        });
+    };
+
+    BENCHMARK_ADVANCED("MultiPool Allocation 1,000 Views of size 1024")(Catch::Benchmark::Chronometer meter) {
+        MultiPool pool(sizeof(int) * 1024 * 1'000 / DEFAULT_CHUNK_SIZE);
+        std::vector<Kokkos::View<int[1024]>> views(1'000);
+
+        meter.measure([&] {
+            for (auto& view : views) {
+                view = pool.allocateView<int>(1024);
+            }
+
+            return views.size();
+        });
+    };
 }

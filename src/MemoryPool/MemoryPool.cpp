@@ -5,7 +5,7 @@
 
 #include "MemoryPool.hpp"
 
-MemoryPool::MemoryPool(size_t numChunks) : pool("pool", numChunks * DEFAULT_CHUNK_SIZE) {
+MemoryPool::MemoryPool(size_t numChunks) : pool("Memory Pool", numChunks * DEFAULT_CHUNK_SIZE) {
     freeList.emplace_back(0, numChunks);
 }
 
@@ -15,7 +15,7 @@ uint8_t *MemoryPool::allocate(size_t n) {
     }
 
     // Find the smallest sequence of chunks that can hold numElements
-    uint32_t requestedChunks = (n / DEFAULT_CHUNK_SIZE);
+    size_t requestedChunks = (n / DEFAULT_CHUNK_SIZE);
     if (n % DEFAULT_CHUNK_SIZE) {
         requestedChunks++;
     }
@@ -27,7 +27,6 @@ uint8_t *MemoryPool::allocate(size_t n) {
 
         if (beginIndex + requestedChunks <= endIndex) {
             auto allocatedChunkIndices = std::make_pair(beginIndex, beginIndex + requestedChunks);
-//            auto subview = Kokkos::subview(pool, chunkIndicesToBytes(allocatedChunkIndices));
             uint8_t* beginChunk = &pool(allocatedChunkIndices.first * DEFAULT_CHUNK_SIZE);
             allocations[beginChunk] = allocatedChunkIndices;
 
@@ -117,11 +116,6 @@ unsigned MemoryPool::getNumAllocatedChunks() const {
 
 unsigned MemoryPool::getNumChunks() const {
     return pool.size() / DEFAULT_CHUNK_SIZE;
-}
-
-std::pair<uint32_t, uint32_t>
-MemoryPool::chunkIndicesToBytes(std::pair<uint32_t, uint32_t> chunkIndices) {
-    return std::make_pair(chunkIndices.first * DEFAULT_CHUNK_SIZE, chunkIndices.second * DEFAULT_CHUNK_SIZE);
 }
 
 MultiPool::MultiPool(size_t initialChunks) {

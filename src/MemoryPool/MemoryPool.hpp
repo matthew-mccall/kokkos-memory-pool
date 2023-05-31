@@ -35,8 +35,6 @@ private:
     Kokkos::View<uint8_t*> pool;
     std::list<IndexPair> freeList;
     std::map<uint8_t*, IndexPair> allocations;
-
-    [[nodiscard]] static std::pair<uint32_t, uint32_t> chunkIndicesToBytes(std::pair<uint32_t, uint32_t> chunkIndices);
 };
 
 class MultiPool {

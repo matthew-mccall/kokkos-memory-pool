@@ -7,12 +7,14 @@
 
 #include "MemoryPool/MemoryPool.hpp"
 
+constexpr size_t TEST_POOL_SIZE = 4;
+
 struct VeryLargeStruct {
-    std::byte data[512];
+    uint8_t data[DEFAULT_CHUNK_SIZE * TEST_POOL_SIZE];
 };
 
 struct LargeStruct {
-    std::byte data[256];
+    uint8_t data[DEFAULT_CHUNK_SIZE * TEST_POOL_SIZE / 2];
 };
 
 int main(int argc, char* argv[]) {
@@ -22,7 +24,7 @@ int main(int argc, char* argv[]) {
 }
 
 TEST_CASE("Memory Pool allocates successfully", "[MemoryPool]") {
-    MemoryPool pool(4); // 512 bytes
+    MemoryPool pool(TEST_POOL_SIZE); // 512 bytes
 
     SECTION("Allocating from a new pool") {
         auto view = pool.allocate<int>(1);

@@ -16,11 +16,6 @@
 constexpr size_t DEFAULT_CHUNK_SIZE = 128;
 
 class MemoryPool {
-
-    struct Chunk {
-        uint8_t data[DEFAULT_CHUNK_SIZE];
-    };
-
 public:
     explicit MemoryPool(size_t numChunks);
 
@@ -51,14 +46,14 @@ public:
 
             if (beginIndex + requestedChunks <= endIndex) {
                 auto allocatedChunkIndices = std::make_pair(beginIndex, beginIndex + requestedChunks);
-                auto subview = Kokkos::subview(pool, allocatedChunkIndices);
-                Chunk* beginChunk = subview.data();
+                auto subview = Kokkos::subview(pool, chunkIndicesToBytes(allocatedChunkIndices));
+                uint8_t* beginChunk = subview.data();
                 allocations[beginChunk] = allocatedChunkIndices;
 
                 if (endIndex == beginIndex + requestedChunks) {
                     freeList.erase(current);
                 } else {
-                    current->first = beginIndex + requestedChunks;
+                    current->first = allocatedChunkIndices.second;
                 }
 
                 return Kokkos::View<DataType*>(reinterpret_cast<DataType*>(beginChunk), numElements);
@@ -72,7 +67,7 @@ public:
 
     template<typename DataType>
     void deallocate(Kokkos::View<DataType*> view) {
-        auto* beginChunk = reinterpret_cast<Chunk*>(view.data());
+        auto* beginChunk = reinterpret_cast<uint8_t*>(view.data());
 
         auto itr = allocations.find(beginChunk);
         assert(itr != allocations.end());
@@ -105,9 +100,11 @@ public:
     friend std::ostream &operator<<(std::ostream &os, const MemoryPool &pool);
 
 private:
-    Kokkos::View<MemoryPool::Chunk*, Kokkos::LayoutRight> pool;
+    Kokkos::View<uint8_t*> pool;
     std::list<std::pair<uint32_t, uint32_t>> freeList;
-    std::map<Chunk*, std::pair<int32_t, int32_t>> allocations;
+    std::map<uint8_t*, std::pair<int32_t, int32_t>> allocations;
+
+    [[nodiscard]] static std::pair<uint32_t, uint32_t> chunkIndicesToBytes(std::pair<uint32_t, uint32_t> chunkIndices);
 };
 
 #endif //KOKKOS_MEMORY_POOL_MEMORYPOOL_HPP

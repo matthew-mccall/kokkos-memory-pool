@@ -5,7 +5,7 @@
 
 #include "MemoryPool.hpp"
 
-MemoryPool::MemoryPool(size_t numChunks) : pool("pool", numChunks) {
+MemoryPool::MemoryPool(size_t numChunks) : pool("pool", numChunks * DEFAULT_CHUNK_SIZE) {
     freeList.emplace_back(0, numChunks);
 }
 
@@ -24,5 +24,10 @@ std::ostream &operator<<(std::ostream &os, const MemoryPool &pool) {
 
     os << std::endl;
     return os;
+}
+
+std::pair<uint32_t, uint32_t>
+MemoryPool::chunkIndicesToBytes(std::pair<uint32_t, uint32_t> chunkIndices) {
+    return std::make_pair(chunkIndices.first * DEFAULT_CHUNK_SIZE, chunkIndices.second * DEFAULT_CHUNK_SIZE);
 }
 

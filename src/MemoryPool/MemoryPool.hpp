@@ -99,6 +99,11 @@ public:
 
     friend std::ostream &operator<<(std::ostream &os, const MemoryPool &pool);
 
+    unsigned getNumAllocations() const;
+    unsigned getNumFreeChunks() const;
+    unsigned getNumAllocatedChunks() const;
+    unsigned getNumChunks() const;
+
 private:
     Kokkos::View<uint8_t*> pool;
     std::list<std::pair<uint32_t, uint32_t>> freeList;

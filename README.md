@@ -7,3 +7,4 @@ A implementation of a memory pool in Kokkos.
 3. Generate build files. For example, `cmake -B build .`
 4. Build `cmake --build build`
 5. Run the tests `cd build && ctest`
+6. To run the benchmarks `./kokkos_memory_pool benchmark`

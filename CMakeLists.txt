@@ -19,4 +19,4 @@ target_link_libraries(kokkos_memory_pool PRIVATE Kokkos::kokkos Catch2::Catch2)
 include(CTest)
 include(Catch)
 
-catch_discover_tests(kokkos_memory_pool TEST_SPEC "[MemoryPool]")
+catch_discover_tests(kokkos_memory_pool)

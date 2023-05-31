@@ -220,9 +220,9 @@ TEST_CASE("Memory Pool allocates and deallocates successfully", "[MemoryPool]") 
     }
 }
 
-TEST_CASE("Benchmarks", "[Benchmarks]") {
+TEST_CASE("Benchmarks", "[!benchmark]") {
     BENCHMARK_ADVANCED("Kokkos Allocating 1,000 Views of size 1024")(Catch::Benchmark::Chronometer meter) {
-        std::vector<Kokkos::View<int[1024]>> views(1'000);
+        std::vector<Kokkos::View<int[1024]>> views(1'000'000);
 
         meter.measure([&] {
             for (auto& view : views) {
@@ -234,8 +234,8 @@ TEST_CASE("Benchmarks", "[Benchmarks]") {
     };
 
     BENCHMARK_ADVANCED("MultiPool Allocation 1,000 Views of size 1024")(Catch::Benchmark::Chronometer meter) {
-        MultiPool pool(sizeof(int) * 1024 * 1'000 / DEFAULT_CHUNK_SIZE);
-        std::vector<Kokkos::View<int[1024]>> views(1'000);
+        MultiPool pool(sizeof(int) * 1024 * 1'000'000 / DEFAULT_CHUNK_SIZE);
+        std::vector<Kokkos::View<int[1024]>> views(1'000'000);
 
         meter.measure([&] {
             for (auto& view : views) {

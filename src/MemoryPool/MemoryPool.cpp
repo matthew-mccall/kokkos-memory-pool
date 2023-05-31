@@ -124,8 +124,8 @@ MemoryPool::chunkIndicesToBytes(std::pair<uint32_t, uint32_t> chunkIndices) {
     return std::make_pair(chunkIndices.first * DEFAULT_CHUNK_SIZE, chunkIndices.second * DEFAULT_CHUNK_SIZE);
 }
 
-MultiPool::MultiPool(size_t intialChunks) {
-    pools.emplace_back(intialChunks);
+MultiPool::MultiPool(size_t initialChunks) {
+    pools.emplace_back(initialChunks);
 }
 
 uint8_t *MultiPool::allocate(size_t n) {
@@ -146,7 +146,7 @@ uint8_t *MultiPool::allocate(size_t n) {
         current++;
     }
 
-    pools.emplace_back(mostAmountOfChunks + (n / DEFAULT_CHUNK_SIZE) + 1);
+    pools.emplace_back((mostAmountOfChunks * 2) + (n / DEFAULT_CHUNK_SIZE) + 1);
     uint8_t* ptr = pools.back().allocate(n);
     allocations[ptr] = --pools.end();
 

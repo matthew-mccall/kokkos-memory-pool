@@ -195,7 +195,7 @@ TEST_CASE("Memory Pool allocates and deallocates successfully", "[MemoryPool]") 
         EXPECT_CHUNKS_AND_ALLOCS_IN_POOL(pool, (EXPECTED_CHUNKS(VeryLargeStruct) * 2), 2);
     }
 
-    SECTION("Allocating contiguous chunks from a fragmented pool causes a resize") {
+    SECTION("Allocating contiguous chunks from a fragmented pool finds largest contiguous region") {
         auto view = pool.allocateView<VeryLargeStruct>(1);
         CAPTURE(pool);
         REQUIRE(view.size() == 1);

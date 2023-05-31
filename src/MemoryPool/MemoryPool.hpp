@@ -41,7 +41,7 @@ private:
 
 class MultiPool {
 public:
-    explicit MultiPool(size_t intialChunks);
+    explicit MultiPool(size_t initialChunks);
 
     uint8_t* allocate(size_t n);
     void deallocate(uint8_t* data);

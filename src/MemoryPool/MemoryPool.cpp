@@ -9,11 +9,77 @@ MemoryPool::MemoryPool(size_t numChunks) : pool("pool", numChunks * DEFAULT_CHUN
     freeList.emplace_back(0, numChunks);
 }
 
+uint8_t *MemoryPool::allocate(size_t n) {
+    if (freeList.empty()) {
+        return {};
+    }
+
+    // Find the smallest sequence of chunks that can hold numElements
+    uint32_t requestedChunks = (n / DEFAULT_CHUNK_SIZE);
+    if (n % DEFAULT_CHUNK_SIZE) {
+        requestedChunks++;
+    }
+
+    auto current = freeList.begin();
+
+    while (current != freeList.end()) {
+        auto [beginIndex, endIndex] = *current;
+
+        if (beginIndex + requestedChunks <= endIndex) {
+            auto allocatedChunkIndices = std::make_pair(beginIndex, beginIndex + requestedChunks);
+//            auto subview = Kokkos::subview(pool, chunkIndicesToBytes(allocatedChunkIndices));
+            uint8_t* beginChunk = &pool(allocatedChunkIndices.first * DEFAULT_CHUNK_SIZE);
+            allocations[beginChunk] = allocatedChunkIndices;
+
+            if (endIndex == beginIndex + requestedChunks) {
+                freeList.erase(current);
+            } else {
+                current->first = allocatedChunkIndices.second;
+            }
+
+            return beginChunk;
+        }
+
+        current++;
+    }
+
+    return {};
+}
+
+void MemoryPool::deallocate(uint8_t *data) {
+    auto itr = allocations.find(data);
+    assert(itr != allocations.end());
+    auto [ptr, chunkIndices] = *itr; // [begin, end)
+
+    allocations.erase(itr);
+
+    auto current = freeList.begin();
+    while (current != freeList.end() && current->first < chunkIndices.second) {
+        current++;
+    }
+
+    freeList.insert(current, chunkIndices);
+
+    // Merge adjacent free chunks
+    current = freeList.begin();
+    while (current != freeList.end()) {
+        auto next = current;
+        next++;
+
+        if (next != freeList.end() && current->second == next->first) {
+            current->second = next->second;
+            freeList.erase(next);
+        }
+
+        current++;
+    }
+}
+
 std::ostream &operator<<(std::ostream &os, const MemoryPool &pool) {
-    std::vector<bool> used(pool.pool.size(), false);
+    std::vector<bool> used(pool.getNumChunks(), false);
 
     for (const auto& [ptr, indices]: pool.allocations) {
-        for (int i = indices.first; i < indices.second; i++) {
+        for (size_t i = indices.first; i < indices.second; i++) {
             used[i] = true;
         }
     }
@@ -22,7 +88,6 @@ std::ostream &operator<<(std::ostream &os, const MemoryPool &pool) {
         os << (i ? "X" : "-");
     }
 
-    os << std::endl;
     return os;
 }
 
@@ -59,3 +124,86 @@ MemoryPool::chunkIndicesToBytes(std::pair<uint32_t, uint32_t> chunkIndices) {
     return std::make_pair(chunkIndices.first * DEFAULT_CHUNK_SIZE, chunkIndices.second * DEFAULT_CHUNK_SIZE);
 }
 
+MultiPool::MultiPool(size_t intialChunks) {
+    pools.emplace_back(intialChunks);
+}
+
+uint8_t *MultiPool::allocate(size_t n) {
+    auto current = pools.begin();
+    unsigned mostAmountOfChunks = 0;
+
+    while (current != pools.end()) {
+        uint8_t* ptr = current->allocate(n);
+        if (ptr) {
+            allocations[ptr] = current;
+            return ptr;
+        }
+
+        if (current->getNumChunks() > mostAmountOfChunks) {
+            mostAmountOfChunks = current->getNumChunks();
+        }
+
+        current++;
+    }
+
+    pools.emplace_back(mostAmountOfChunks + (n / DEFAULT_CHUNK_SIZE) + 1);
+    uint8_t* ptr = pools.back().allocate(n);
+    allocations[ptr] = --pools.end();
+
+    return ptr;
+}
+
+void MultiPool::deallocate(uint8_t *data) {
+    auto itr = allocations.find(data);
+    assert(itr != allocations.end());
+    itr->second->deallocate(data);
+    allocations.erase(itr);
+}
+
+std::ostream &operator<<(std::ostream &os, const MultiPool &multiPool) {
+    for (const auto& pool : multiPool.pools) {
+        os << pool << ' ';
+    }
+
+    return os;
+}
+
+unsigned MultiPool::getNumAllocations() const {
+    unsigned numAllocations = 0;
+
+    for (const auto& pool : pools) {
+        numAllocations += pool.getNumAllocations();
+    }
+
+    return numAllocations;
+}
+
+unsigned MultiPool::getNumFreeChunks() const {
+    unsigned numFreeChunks = 0;
+
+    for (const auto& pool : pools) {
+        numFreeChunks += pool.getNumFreeChunks();
+    }
+
+    return numFreeChunks;
+}
+
+unsigned MultiPool::getNumAllocatedChunks() const {
+    unsigned numAllocatedChunks = 0;
+
+    for (const auto& pool : pools) {
+        numAllocatedChunks += pool.getNumAllocatedChunks();
+    }
+
+    return numAllocatedChunks;
+}
+
+unsigned MultiPool::getNumChunks() const {
+    unsigned numChunks = 0;
+
+    for (const auto& pool : pools) {
+        numChunks += pool.getNumChunks();
+    }
+
+    return numChunks;
+}

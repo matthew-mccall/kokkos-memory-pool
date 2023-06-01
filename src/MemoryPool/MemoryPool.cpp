@@ -27,7 +27,7 @@ uint8_t *MemoryPool::allocate(size_t n) {
 
         if (beginIndex + requestedChunks <= endIndex) {
             auto allocatedChunkIndices = std::make_pair(beginIndex, beginIndex + requestedChunks);
-            uint8_t* beginChunk = &pool(allocatedChunkIndices.first * DEFAULT_CHUNK_SIZE);
+            uint8_t* beginChunk = Kokkos::subview(pool, Kokkos::pair(beginIndex * DEFAULT_CHUNK_SIZE, (beginIndex + requestedChunks) * DEFAULT_CHUNK_SIZE)).data();
             allocations[beginChunk] = allocatedChunkIndices;
 
             if (endIndex == beginIndex + requestedChunks) {
@@ -42,7 +42,7 @@ uint8_t *MemoryPool::allocate(size_t n) {
         current++;
     }
 
-    return {};
+    return nullptr;
 }
 
 void MemoryPool::deallocate(uint8_t *data) {

@@ -118,6 +118,10 @@ unsigned MemoryPool::getNumChunks() const {
     return pool.size() / DEFAULT_CHUNK_SIZE;
 }
 
+size_t MultiPool::getChunkSize() const {
+    return DEFAULT_CHUNK_SIZE;
+}
+
 MultiPool::MultiPool(size_t initialChunks) {
     pools.emplace_back(initialChunks);
 }

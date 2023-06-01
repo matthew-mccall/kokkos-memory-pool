@@ -60,6 +60,7 @@ public:
     unsigned getNumFreeChunks() const;
     unsigned getNumAllocatedChunks() const;
     unsigned getNumChunks() const;
+    size_t getChunkSize() const;
 
 private:
     using PoolListT = std::list<MemoryPool>;

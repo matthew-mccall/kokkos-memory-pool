@@ -8,12 +8,27 @@
 #include <cstddef>
 #include <list>
 #include <map>
+#include <set>
 #include <utility>
 #include <ostream>
 
 #include "Kokkos_Core.hpp"
 
 constexpr size_t DEFAULT_CHUNK_SIZE = 128;
+
+using IndexPair = std::pair<size_t, size_t>;
+using FreeListT = std::list<IndexPair>;
+
+class CompareFreeIndices {
+public:
+    using is_transparent = void; // https://www.fluentcpp.com/2017/06/09/search-set-another-type-key/
+
+    bool operator()(FreeListT::iterator lhs, FreeListT::iterator rhs) const;
+    bool operator()(FreeListT::iterator lhs, size_t rhs) const;
+    bool operator()(size_t lhs, FreeListT::iterator rhs) const;
+    bool operator()(FreeListT::iterator lhs, IndexPair rhs) const;
+    bool operator()(IndexPair lhs, FreeListT::iterator rhs) const;
+};
 
 class MemoryPool {
 public:
@@ -32,10 +47,9 @@ public:
     static size_t getRequiredChunks(size_t n);
 
 private:
-    using IndexPair = std::pair<size_t, size_t>;
-
     Kokkos::View<uint8_t*> pool;
-    std::list<IndexPair> freeList;
+    FreeListT freeList;
+    std::multiset<FreeListT::iterator, CompareFreeIndices> freeListBySize;
     std::map<uint8_t*, IndexPair> allocations;
 };
 

@@ -5,8 +5,35 @@
 
 #include "MemoryPool.hpp"
 
+bool CompareFreeIndices::operator()(FreeListT::iterator lhs, FreeListT::iterator rhs) const {
+    auto [lhsStart, lhsEnd] = *lhs;
+    auto [rhsStart, rhsEnd] = *rhs;
+    return (lhsEnd - lhsStart) < (rhsEnd - rhsStart);
+}
+
+bool CompareFreeIndices::operator()(FreeListT::iterator lhs, size_t rhs) const {
+    auto [lhsStart, lhsEnd] = *lhs;
+    return (lhsEnd - lhsStart) < rhs;
+}
+
+bool CompareFreeIndices::operator()(size_t lhs, FreeListT::iterator rhs) const {
+    auto [rhsStart, rhsEnd] = *rhs;
+    return lhs < (rhsEnd - rhsStart);
+}
+
+bool CompareFreeIndices::operator()(FreeListT::iterator lhs, IndexPair rhs) const {
+    return *lhs < rhs;
+}
+
+bool CompareFreeIndices::operator()(IndexPair lhs, FreeListT::iterator rhs) const {
+    return lhs < *rhs;
+}
+
 MemoryPool::MemoryPool(size_t numChunks) : pool("Memory Pool", numChunks * DEFAULT_CHUNK_SIZE) {
-    freeList.emplace_back(0, numChunks);
+    auto initialChunkIndices = std::make_pair(0, numChunks);
+
+    freeList.emplace_back(initialChunkIndices);
+    freeListBySize.insert(freeList.begin());
 }
 
 uint8_t *MemoryPool::allocate(size_t n) {
@@ -17,44 +44,45 @@ uint8_t *MemoryPool::allocate(size_t n) {
     // Find the smallest sequence of chunks that can hold numElements
     size_t requestedChunks = getRequiredChunks(n);
 
-    auto current = freeList.begin();
-
-    while (current != freeList.end()) {
-        auto [beginIndex, endIndex] = *current;
-
-        if (beginIndex + requestedChunks <= endIndex) {
-            auto allocatedChunkIndices = std::make_pair(beginIndex, beginIndex + requestedChunks);
-            uint8_t* beginChunk = Kokkos::subview(pool, Kokkos::pair(beginIndex * DEFAULT_CHUNK_SIZE, (beginIndex + requestedChunks) * DEFAULT_CHUNK_SIZE)).data();
-            allocations[beginChunk] = allocatedChunkIndices;
-
-            if (endIndex == beginIndex + requestedChunks) {
-                freeList.erase(current);
-            } else {
-                current->first = allocatedChunkIndices.second;
-            }
-
-            return beginChunk;
-        }
-
-        current++;
+    auto freeSetItr = freeListBySize.lower_bound(requestedChunks);
+    if (freeSetItr == freeListBySize.end()) {
+        return nullptr;
     }
 
-    return nullptr;
+    auto freeListItr = *freeSetItr;
+    auto [beginIndex, endIndex] = *freeListItr;
+
+    freeListBySize.erase(freeSetItr);
+
+    if (endIndex - beginIndex == requestedChunks) {
+        freeList.erase(freeListItr);
+    } else {
+        freeListItr->first += requestedChunks;
+        freeListBySize.insert(freeListItr);
+    }
+
+    uint8_t* ptr = pool.data() + (beginIndex * DEFAULT_CHUNK_SIZE);
+    allocations[ptr] = std::make_pair(beginIndex, beginIndex + requestedChunks);
+
+    return ptr;
 }
 
 void MemoryPool::deallocate(uint8_t *data) {
-    auto itr = allocations.find(data);
-    assert(itr != allocations.end());
-    auto [ptr, chunkIndices] = *itr; // [begin, end)
+    auto allocationsItr = allocations.find(data);
+    assert(allocationsItr != allocations.end());
+    auto [ptr, chunkIndices] = *allocationsItr; // [begin, end)
 
-    allocations.erase(itr);
+    allocations.erase(allocationsItr);
 
     auto current = freeList.begin();
     while (current != freeList.end() && current->first < chunkIndices.second) {
         current++;
     }
 
-    freeList.insert(current, chunkIndices);
+    auto freeListItr = freeList.insert(current, chunkIndices);
+
+    auto freeSetItr = freeListBySize.find(current);
+    freeListBySize.insert(freeSetItr, freeListItr);
 
     // Merge adjacent free chunks
     current = freeList.begin();
@@ -63,8 +91,21 @@ void MemoryPool::deallocate(uint8_t *data) {
         next++;
 
         if (next != freeList.end() && current->second == next->first) {
+            auto freeSetCurrentItr = freeListBySize.find(*current);
+            auto freeSetNextItr = freeListBySize.find(*next);
+
+            assert(freeSetCurrentItr != freeListBySize.end());
+            assert(freeSetNextItr != freeListBySize.end());
+
             current->second = next->second;
-            freeList.erase(next);
+
+            freeListBySize.erase(freeSetCurrentItr);
+            freeListBySize.erase(freeSetNextItr);
+
+            freeListBySize.insert(current);
+
+            current = freeList.erase(next);
+            continue;
         }
 
         current++;

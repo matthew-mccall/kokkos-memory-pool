@@ -175,30 +175,67 @@ TEST_CASE("Memory Pool allocates and deallocates custom types successfully", "[M
 }
 
 TEST_CASE("Benchmarks", "[!benchmark]") {
+    constexpr size_t NUMBER_OF_VIEWS = 1'000'000;
+    constexpr size_t SIZE_OF_VIEWS = 1024;
+
     BENCHMARK_ADVANCED("Kokkos Allocating 1,000,000 Views of 1024 ints")(Catch::Benchmark::Chronometer meter) {
-        std::vector<Kokkos::View<int[1024]>> views(1'000'000);
+        std::vector<Kokkos::View<int[SIZE_OF_VIEWS]>> views(NUMBER_OF_VIEWS);
 
         meter.measure([&] {
             for (auto& view : views) {
-                view = Kokkos::View<int[1024]>("view", 1024);
-                REQUIRE(view.size() == 1024);
+                view = Kokkos::View<int[SIZE_OF_VIEWS]>("view", SIZE_OF_VIEWS);
+                REQUIRE(view.size() == SIZE_OF_VIEWS);
             }
 
             return views.size();
         });
     };
 
-    BENCHMARK_ADVANCED("MultiPool Allocation 1,000,000 Views of 1024 ints")(Catch::Benchmark::Chronometer meter) {
-        MultiPool pool(sizeof(int) * 1024 * 1'000'000 / DEFAULT_CHUNK_SIZE);
-        std::vector<Kokkos::View<int[1024]>> views(1'000'000);
+    BENCHMARK_ADVANCED("MultiPool Allocation 1,000,000 Views of SIZE_OF_VIEWS ints")(Catch::Benchmark::Chronometer meter) {
+        const size_t TOTAL_CHUNK_SIZE = MemoryPool::getRequiredChunks(sizeof(int) * SIZE_OF_VIEWS * NUMBER_OF_VIEWS);
+
+        MultiPool pool(TOTAL_CHUNK_SIZE);
+        std::vector<Kokkos::View<int[SIZE_OF_VIEWS]>> views(NUMBER_OF_VIEWS);
 
         meter.measure([&] {
             for (auto& view : views) {
-                view = pool.allocateView<int>(1024);
-                REQUIRE(view.size() == 1024);
+                view = pool.allocateView<int>(SIZE_OF_VIEWS);
+                REQUIRE(view.size() == SIZE_OF_VIEWS);
             }
+
+            EXPECT_CHUNKS_AND_ALLOCS_IN_POOL(pool, TOTAL_CHUNK_SIZE, NUMBER_OF_VIEWS);
 
             return views.size();
         });
+    };
+
+    BENCHMARK_ADVANCED("Allocating under heavy fragmentation")(Catch::Benchmark::Chronometer meter) {
+        const size_t BEFORE_FRAGMENTATION_TOTAL_CHUNK_SIZE = MemoryPool::getRequiredChunks(sizeof(int) * SIZE_OF_VIEWS * NUMBER_OF_VIEWS);
+
+        MultiPool pool(BEFORE_FRAGMENTATION_TOTAL_CHUNK_SIZE);
+        std::vector<Kokkos::View<int*>> views(NUMBER_OF_VIEWS);
+
+        for (auto& view : views) {
+            view = pool.allocateView<int>(SIZE_OF_VIEWS);
+            REQUIRE(view.size() == SIZE_OF_VIEWS);
+        }
+
+        EXPECT_CHUNKS_AND_ALLOCS_IN_POOL(pool, BEFORE_FRAGMENTATION_TOTAL_CHUNK_SIZE, NUMBER_OF_VIEWS);
+
+        for (unsigned i = 0; i < NUMBER_OF_VIEWS; i+= 2) {
+            pool.deallocateView<int>(views[i]);
+        }
+
+        EXPECT_CHUNKS_AND_ALLOCS_IN_POOL(pool, BEFORE_FRAGMENTATION_TOTAL_CHUNK_SIZE / 2, NUMBER_OF_VIEWS / 2);
+
+        meter.measure([&] {
+            for (unsigned i = 0; i < NUMBER_OF_VIEWS; i+= 2) {
+                views[i] = pool.allocateView<int>(SIZE_OF_VIEWS * 2);
+                REQUIRE(views[i].size() == SIZE_OF_VIEWS * 2);
+            }
+            return views.size();
+        });
+
+        EXPECT_CHUNKS_AND_ALLOCS_IN_POOL(pool, BEFORE_FRAGMENTATION_TOTAL_CHUNK_SIZE * 1.5, NUMBER_OF_VIEWS);
     };
 }

@@ -15,10 +15,7 @@ uint8_t *MemoryPool::allocate(size_t n) {
     }
 
     // Find the smallest sequence of chunks that can hold numElements
-    size_t requestedChunks = (n / DEFAULT_CHUNK_SIZE);
-    if (n % DEFAULT_CHUNK_SIZE) {
-        requestedChunks++;
-    }
+    size_t requestedChunks = getRequiredChunks(n);
 
     auto current = freeList.begin();
 
@@ -118,6 +115,10 @@ unsigned MemoryPool::getNumChunks() const {
     return pool.size() / DEFAULT_CHUNK_SIZE;
 }
 
+size_t MemoryPool::getRequiredChunks(size_t n) {
+    return (n / DEFAULT_CHUNK_SIZE) + (n % DEFAULT_CHUNK_SIZE ? 1 : 0);
+}
+
 size_t MultiPool::getChunkSize() const {
     return DEFAULT_CHUNK_SIZE;
 }
@@ -144,7 +145,7 @@ uint8_t *MultiPool::allocate(size_t n) {
         current++;
     }
 
-    pools.emplace_back((mostAmountOfChunks * 2) + (n / DEFAULT_CHUNK_SIZE) + 1);
+    pools.emplace_back((mostAmountOfChunks * 2) + MemoryPool::getRequiredChunks(n));
     uint8_t* ptr = pools.back().allocate(n);
     allocations[ptr] = --pools.end();
 

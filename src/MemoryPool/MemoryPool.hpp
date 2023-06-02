@@ -29,6 +29,8 @@ public:
     unsigned getNumAllocatedChunks() const;
     unsigned getNumChunks() const;
 
+    static size_t getRequiredChunks(size_t n);
+
 private:
     using IndexPair = std::pair<size_t, size_t>;
 

@@ -49,7 +49,7 @@ public:
 private:
     Kokkos::View<uint8_t*> pool;
     FreeListT freeList;
-    std::multiset<FreeListT::iterator, CompareFreeIndices> freeListBySize;
+    std::multiset<FreeListT::iterator, CompareFreeIndices> freeSetBySize;
     std::map<uint8_t*, IndexPair> allocations;
 };
 

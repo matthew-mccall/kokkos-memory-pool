@@ -6,9 +6,17 @@
 #include "MemoryPool.hpp"
 
 bool CompareFreeIndices::operator()(FreeListT::iterator lhs, FreeListT::iterator rhs) const {
+    // Sort by size then by type
     auto [lhsStart, lhsEnd] = *lhs;
     auto [rhsStart, rhsEnd] = *rhs;
-    return (lhsEnd - lhsStart) < (rhsEnd - rhsStart);
+    size_t lhsSize = lhsEnd - lhsStart;
+    size_t rhsSize = rhsEnd - rhsStart;
+
+    if (lhsSize == rhsSize) {
+        return *lhs < *rhs;
+    }
+
+    return lhsSize < rhsSize;
 }
 
 bool CompareFreeIndices::operator()(FreeListT::iterator lhs, size_t rhs) const {
@@ -22,18 +30,35 @@ bool CompareFreeIndices::operator()(size_t lhs, FreeListT::iterator rhs) const {
 }
 
 bool CompareFreeIndices::operator()(FreeListT::iterator lhs, IndexPair rhs) const {
-    return *lhs < rhs;
-}
+    auto [lhsStart, lhsEnd] = *lhs;
+    auto [rhsStart, rhsEnd] = rhs;
+    size_t lhsSize = lhsEnd - lhsStart;
+    size_t rhsSize = rhsEnd - rhsStart;
+
+    if (lhsSize == rhsSize) {
+        return *lhs < rhs;
+    }
+
+    return lhsSize < rhsSize;}
 
 bool CompareFreeIndices::operator()(IndexPair lhs, FreeListT::iterator rhs) const {
-    return lhs < *rhs;
+    auto [lhsStart, lhsEnd] = lhs;
+    auto [rhsStart, rhsEnd] = *rhs;
+    size_t lhsSize = lhsEnd - lhsStart;
+    size_t rhsSize = rhsEnd - rhsStart;
+
+    if (lhsSize == rhsSize) {
+        return lhs < *rhs;
+    }
+
+    return lhsSize < rhsSize;
 }
 
 MemoryPool::MemoryPool(size_t numChunks) : pool("Memory Pool", numChunks * DEFAULT_CHUNK_SIZE) {
     auto initialChunkIndices = std::make_pair(0, numChunks);
 
     freeList.emplace_back(initialChunkIndices);
-    freeListBySize.insert(freeList.begin());
+    freeSetBySize.insert(freeList.begin());
 }
 
 uint8_t *MemoryPool::allocate(size_t n) {
@@ -44,21 +69,21 @@ uint8_t *MemoryPool::allocate(size_t n) {
     // Find the smallest sequence of chunks that can hold numElements
     size_t requestedChunks = getRequiredChunks(n);
 
-    auto freeSetItr = freeListBySize.lower_bound(requestedChunks);
-    if (freeSetItr == freeListBySize.end()) {
+    auto freeSetItr = freeSetBySize.lower_bound(requestedChunks);
+    if (freeSetItr == freeSetBySize.end()) {
         return nullptr;
     }
 
     auto freeListItr = *freeSetItr;
     auto [beginIndex, endIndex] = *freeListItr;
 
-    freeListBySize.erase(freeSetItr);
+    freeSetBySize.erase(freeSetItr);
 
     if (endIndex - beginIndex == requestedChunks) {
         freeList.erase(freeListItr);
     } else {
         freeListItr->first += requestedChunks;
-        freeListBySize.insert(freeListItr);
+        freeSetBySize.insert(freeListItr);
     }
 
     uint8_t* ptr = pool.data() + (beginIndex * DEFAULT_CHUNK_SIZE);
@@ -80,9 +105,7 @@ void MemoryPool::deallocate(uint8_t *data) {
     }
 
     auto freeListItr = freeList.insert(current, chunkIndices);
-
-    auto freeSetItr = freeListBySize.find(current);
-    freeListBySize.insert(freeSetItr, freeListItr);
+    freeSetBySize.insert(freeListItr);
 
     // Merge adjacent free chunks
     current = freeList.begin();
@@ -91,18 +114,18 @@ void MemoryPool::deallocate(uint8_t *data) {
         next++;
 
         if (next != freeList.end() && current->second == next->first) {
-            auto freeSetCurrentItr = freeListBySize.find(*current);
-            auto freeSetNextItr = freeListBySize.find(*next);
+            auto freeSetCurrentItr = freeSetBySize.find(*current);
+            auto freeSetNextItr = freeSetBySize.find(*next);
 
-            assert(freeSetCurrentItr != freeListBySize.end());
-            assert(freeSetNextItr != freeListBySize.end());
+            assert(freeSetCurrentItr != freeSetBySize.end());
+            assert(freeSetNextItr != freeSetBySize.end());
 
             current->second = next->second;
 
-            freeListBySize.erase(freeSetCurrentItr);
-            freeListBySize.erase(freeSetNextItr);
+            freeSetBySize.erase(freeSetCurrentItr);
+            freeSetBySize.erase(freeSetNextItr);
 
-            freeListBySize.insert(current);
+            freeSetBySize.insert(current);
 
             current = freeList.erase(next);
             continue;
@@ -124,6 +147,21 @@ std::ostream &operator<<(std::ostream &os, const MemoryPool &pool) {
     for (auto i : used) {
         os << (i ? "X" : "-");
     }
+
+    os << "\nFree List: ";
+
+    for (const auto& [beginIndex, endIndex] : pool.freeList) {
+        os << "[" << beginIndex << ", " << endIndex << ") ";
+    }
+
+    os << "\nFree Set:  ";
+
+    for (const auto itr : pool.freeSetBySize) {
+        auto [beginIndex, endIndex] = *itr;
+        os << "[" << beginIndex << ", " << endIndex << ") ";
+    }
+
+    os << "\n";
 
     return os;
 }
@@ -194,9 +232,8 @@ uint8_t *MultiPool::allocate(size_t n) {
 }
 
 void MultiPool::deallocate(uint8_t *data) {
+    allocations.at(data)->deallocate(data);
     auto itr = allocations.find(data);
-    assert(itr != allocations.end());
-    itr->second->deallocate(data);
     allocations.erase(itr);
 }
 
@@ -209,13 +246,7 @@ std::ostream &operator<<(std::ostream &os, const MultiPool &multiPool) {
 }
 
 unsigned MultiPool::getNumAllocations() const {
-    unsigned numAllocations = 0;
-
-    for (const auto& pool : pools) {
-        numAllocations += pool.getNumAllocations();
-    }
-
-    return numAllocations;
+    return allocations.size();
 }
 
 unsigned MultiPool::getNumFreeChunks() const {

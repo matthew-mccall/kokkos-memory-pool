@@ -204,44 +204,37 @@ TEST_CASE("Pool works under fragmentation", "[MemoryPool][allocation][deallocati
 }
 
 TEST_CASE("Benchmarks", "[!benchmark]") {
-    constexpr size_t NUMBER_OF_VIEWS = 1'000'000;
+    constexpr size_t NUMBER_OF_VIEWS = 10'000;
     constexpr size_t SIZE_OF_VIEWS = 1024;
 
-    BENCHMARK_ADVANCED(fmt::format("Kokkos Allocating {L} Views of {} ints", NUMBER_OF_VIEWS, SIZE_OF_VIEWS))(Catch::Benchmark::Chronometer meter) {
+    const size_t TOTAL_CHUNK_SIZE = MemoryPool::getRequiredChunks(sizeof(int) * SIZE_OF_VIEWS) * NUMBER_OF_VIEWS;
+
+    BENCHMARK(fmt::format("Kokkos Allocating {:L} Views of {:L} ints", NUMBER_OF_VIEWS, SIZE_OF_VIEWS)) {
         std::vector<Kokkos::View<int[SIZE_OF_VIEWS]>> views(NUMBER_OF_VIEWS);
 
-        meter.measure([&] {
-            for (auto& view : views) {
-                view = Kokkos::View<int[SIZE_OF_VIEWS]>("view", SIZE_OF_VIEWS);
-                REQUIRE(view.size() == SIZE_OF_VIEWS);
-            }
+        for (auto& view : views) {
+            view = Kokkos::View<int[SIZE_OF_VIEWS]>("view", SIZE_OF_VIEWS);
+            REQUIRE(view.size() == SIZE_OF_VIEWS);
+        }
 
-            return views.size();
-        });
+        return views.size();
     };
 
-    BENCHMARK_ADVANCED(fmt::format("MultiPool Allocation {L} Views of {} ints", NUMBER_OF_VIEWS, SIZE_OF_VIEWS))(Catch::Benchmark::Chronometer meter) {
-        const size_t TOTAL_CHUNK_SIZE = MemoryPool::getRequiredChunks(sizeof(int) * SIZE_OF_VIEWS * NUMBER_OF_VIEWS);
-
+    BENCHMARK(fmt::format("MultiPool Allocation {:L} Views of {:L} ints", NUMBER_OF_VIEWS, SIZE_OF_VIEWS)) {
         MultiPool pool(TOTAL_CHUNK_SIZE);
         std::vector<Kokkos::View<int[SIZE_OF_VIEWS]>> views(NUMBER_OF_VIEWS);
 
-        meter.measure([&] {
-            for (auto& view : views) {
-                view = pool.allocateView<int>(SIZE_OF_VIEWS);
-                REQUIRE(view.size() == SIZE_OF_VIEWS);
-            }
+        for (auto& view : views) {
+            view = pool.allocateView<int>(SIZE_OF_VIEWS);
+            REQUIRE(view.size() == SIZE_OF_VIEWS);
+        }
 
-//            EXPECT_CHUNKS_AND_ALLOCS_IN_POOL(pool, TOTAL_CHUNK_SIZE, NUMBER_OF_VIEWS);
-
-            return views.size();
-        });
+        EXPECT_CHUNKS_AND_ALLOCS_IN_POOL(pool, TOTAL_CHUNK_SIZE, NUMBER_OF_VIEWS);
+        return views.size();
     };
 
-    BENCHMARK_ADVANCED("Allocating under heavy fragmentation")(Catch::Benchmark::Chronometer meter) {
-        const size_t BEFORE_FRAGMENTATION_TOTAL_CHUNK_SIZE = MemoryPool::getRequiredChunks(sizeof(int) * SIZE_OF_VIEWS * NUMBER_OF_VIEWS);
-
-        MultiPool pool(BEFORE_FRAGMENTATION_TOTAL_CHUNK_SIZE);
+    BENCHMARK("Allocating under heavy fragmentation") {
+        MultiPool pool(TOTAL_CHUNK_SIZE);
         std::vector<Kokkos::View<int*>> views(NUMBER_OF_VIEWS);
 
         for (auto& view : views) {
@@ -249,22 +242,20 @@ TEST_CASE("Benchmarks", "[!benchmark]") {
             REQUIRE(view.size() == SIZE_OF_VIEWS);
         }
 
-//        EXPECT_CHUNKS_AND_ALLOCS_IN_POOL(pool, BEFORE_FRAGMENTATION_TOTAL_CHUNK_SIZE, NUMBER_OF_VIEWS);
+        EXPECT_CHUNKS_AND_ALLOCS_IN_POOL(pool, TOTAL_CHUNK_SIZE, NUMBER_OF_VIEWS);
 
         for (unsigned i = 0; i < NUMBER_OF_VIEWS; i+= 2) {
             pool.deallocateView<int>(views[i]);
         }
 
-//        EXPECT_CHUNKS_AND_ALLOCS_IN_POOL(pool, BEFORE_FRAGMENTATION_TOTAL_CHUNK_SIZE / 2, NUMBER_OF_VIEWS / 2);
+        EXPECT_CHUNKS_AND_ALLOCS_IN_POOL(pool, TOTAL_CHUNK_SIZE / 2, NUMBER_OF_VIEWS / 2);
 
-        meter.measure([&] {
-            for (unsigned i = 0; i < NUMBER_OF_VIEWS; i+= 2) {
-                views[i] = pool.allocateView<int>(SIZE_OF_VIEWS);
-                REQUIRE(views[i].size() == SIZE_OF_VIEWS);
-            }
-//            EXPECT_CHUNKS_AND_ALLOCS_IN_POOL(pool, BEFORE_FRAGMENTATION_TOTAL_CHUNK_SIZE * 1.5, NUMBER_OF_VIEWS * 1);
+        for (unsigned i = 0; i < NUMBER_OF_VIEWS; i+= 2) {
+            views[i] = pool.allocateView<int>(SIZE_OF_VIEWS);
+            REQUIRE(views[i].size() == SIZE_OF_VIEWS);
+        }
 
-            return views.size();
-        });
+        EXPECT_CHUNKS_AND_ALLOCS_IN_POOL(pool, TOTAL_CHUNK_SIZE, NUMBER_OF_VIEWS);
+        return views.size();
     };
 }

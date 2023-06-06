@@ -15,7 +15,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 add_executable(kokkos_memory_pool src/MemoryPool/MemoryPool.cpp src/MemoryPool/MemoryPool.hpp test/test.cpp)
 target_include_directories(kokkos_memory_pool PRIVATE ${Kokkos_INCLUDE_DIRS_RET} src)
-target_link_libraries(kokkos_memory_pool PRIVATE Kokkos::kokkos Catch2::Catch2 fmt::fmt)
+target_link_libraries(kokkos_memory_pool PRIVATE Kokkos::kokkos Catch2::Catch2WithMain fmt::fmt)
 
 include(CTest)
 include(Catch)

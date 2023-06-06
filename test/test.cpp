@@ -8,6 +8,8 @@
 #include "catch2/catch_test_macros.hpp"
 #include "catch2/benchmark/catch_benchmark.hpp"
 #include "catch2/generators/catch_generators.hpp"
+#include "catch2/reporters/catch_reporter_event_listener.hpp"
+#include "catch2/reporters/catch_reporter_registrars.hpp"
 
 #include "fmt/format.h"
 
@@ -30,11 +32,21 @@ struct LargeStruct {
     uint8_t data[DEFAULT_CHUNK_SIZE * TEST_POOL_SIZE / 2];
 };
 
-int main(int argc, char* argv[]) {
-    Kokkos::ScopeGuard guard(argc, argv);
-    int result = Catch::Session().run(argc, argv);
-    return result;
-}
+class TestControl : public Catch::EventListenerBase {
+public:
+    using EventListenerBase::EventListenerBase;
+
+    void testRunStarting(const Catch::TestRunInfo &testRunInfo) override {
+        Kokkos::initialize();
+    }
+
+    void testRunEnded(const Catch::TestRunStats &testRunStats) override {
+        Kokkos::finalize();
+    }
+
+};
+
+CATCH_REGISTER_LISTENER(TestControl)
 
 TEST_CASE("Memory Pool allocates primitives successfully", "[MemoryPool][allocation][primitives]") {
     MultiPool pool(TEST_POOL_SIZE); // 512 bytes

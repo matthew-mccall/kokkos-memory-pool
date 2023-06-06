@@ -1,68 +1,41 @@
 //
 // Created by Matthew McCall on 5/22/23.
 //
+#include <iterator>
 #include <vector>
 
 #include "MemoryPool.hpp"
 
-bool CompareFreeIndices::operator()(FreeListT::iterator lhs, FreeListT::iterator rhs) const {
-    // Sort by size then by type
-    auto [lhsStart, lhsEnd] = *lhs;
-    auto [rhsStart, rhsEnd] = *rhs;
-    size_t lhsSize = lhsEnd - lhsStart;
-    size_t rhsSize = rhsEnd - rhsStart;
-
-    if (lhsSize == rhsSize) {
-        return *lhs < *rhs;
-    }
-
-    return lhsSize < rhsSize;
-}
-
-bool CompareFreeIndices::operator()(FreeListT::iterator lhs, size_t rhs) const {
-    auto [lhsStart, lhsEnd] = *lhs;
-    return (lhsEnd - lhsStart) < rhs;
-}
-
-bool CompareFreeIndices::operator()(size_t lhs, FreeListT::iterator rhs) const {
-    auto [rhsStart, rhsEnd] = *rhs;
-    return lhs < (rhsEnd - rhsStart);
-}
-
-bool CompareFreeIndices::operator()(FreeListT::iterator lhs, IndexPair rhs) const {
-    auto [lhsStart, lhsEnd] = *lhs;
+bool CompareFreeIndices::operator()(IndexPair lhs, IndexPair rhs) const {
+    auto [lhsStart, lhsEnd] = lhs;
     auto [rhsStart, rhsEnd] = rhs;
     size_t lhsSize = lhsEnd - lhsStart;
     size_t rhsSize = rhsEnd - rhsStart;
 
     if (lhsSize == rhsSize) {
-        return *lhs < rhs;
-    }
-
-    return lhsSize < rhsSize;}
-
-bool CompareFreeIndices::operator()(IndexPair lhs, FreeListT::iterator rhs) const {
-    auto [lhsStart, lhsEnd] = lhs;
-    auto [rhsStart, rhsEnd] = *rhs;
-    size_t lhsSize = lhsEnd - lhsStart;
-    size_t rhsSize = rhsEnd - rhsStart;
-
-    if (lhsSize == rhsSize) {
-        return lhs < *rhs;
+        return lhs < rhs;
     }
 
     return lhsSize < rhsSize;
 }
 
+bool CompareFreeIndices::operator()(IndexPair lhs, size_t rhs) const {
+    auto [lhsStart, lhsEnd] = lhs;
+    return (lhsEnd - lhsStart) < rhs;
+}
+
+bool CompareFreeIndices::operator()(size_t lhs, IndexPair rhs) const {
+    auto [rhsStart, rhsEnd] = rhs;
+    return lhs < (rhsEnd - rhsStart);
+}
+
 MemoryPool::MemoryPool(size_t numChunks) : pool("Memory Pool", numChunks * DEFAULT_CHUNK_SIZE) {
     auto initialChunkIndices = std::make_pair(0, numChunks);
-
-    freeList.emplace_back(initialChunkIndices);
-    freeSetBySize.insert(freeList.begin());
+    freeSetBySize.insert(initialChunkIndices);
 }
 
 uint8_t *MemoryPool::allocate(size_t n) {
-    if (freeList.empty()) {
+    if (freeSetBySize.empty()) {
         return {};
     }
 
@@ -74,16 +47,12 @@ uint8_t *MemoryPool::allocate(size_t n) {
         return nullptr;
     }
 
-    auto freeListItr = *freeSetItr;
-    auto [beginIndex, endIndex] = *freeListItr;
+    auto [beginIndex, endIndex] = *freeSetItr;
 
     freeSetBySize.erase(freeSetItr);
 
-    if (endIndex - beginIndex == requestedChunks) {
-        freeList.erase(freeListItr);
-    } else {
-        freeListItr->first += requestedChunks;
-        freeSetBySize.insert(freeListItr);
+    if (endIndex - beginIndex != requestedChunks) {
+        freeSetBySize.emplace(beginIndex + requestedChunks, endIndex);
     }
 
     uint8_t* ptr = pool.data() + (beginIndex * DEFAULT_CHUNK_SIZE);
@@ -97,41 +66,31 @@ void MemoryPool::deallocate(uint8_t *data) {
     assert(allocationsItr != allocations.end());
     auto [ptr, chunkIndices] = *allocationsItr; // [begin, end)
 
+    auto freeSetItr = freeSetBySize.insert(chunkIndices);
     allocations.erase(allocationsItr);
 
-    auto current = freeList.begin();
-    while (current != freeList.end() && current->first < chunkIndices.second) {
-        current++;
+    // Merge adjacent free chunks
+    if (freeSetItr != freeSetBySize.begin()) {
+        auto prevItr = std::prev(freeSetItr);
+        auto [prevBeginIndex, prevEndIndex] = *prevItr;
+
+        if (prevEndIndex == chunkIndices.first) {
+            freeSetBySize.erase(prevItr);
+            freeSetBySize.erase(freeSetItr);
+            freeSetItr = freeSetBySize.emplace(prevBeginIndex, chunkIndices.second);
+        }
     }
 
-    auto freeListItr = freeList.insert(current, chunkIndices);
-    freeSetBySize.insert(freeListItr);
+    if (std::next(freeSetItr) != freeSetBySize.end()) {
+        auto nextItr = std::next(freeSetItr);
+        auto [nextBeginIndex, nextEndIndex] = *nextItr;
+        auto [beginIndex, endIndex] = *freeSetItr;
 
-    // Merge adjacent free chunks
-    current = freeList.begin();
-    while (current != freeList.end()) {
-        auto next = current;
-        next++;
-
-        if (next != freeList.end() && current->second == next->first) {
-            auto freeSetCurrentItr = freeSetBySize.find(*current);
-            auto freeSetNextItr = freeSetBySize.find(*next);
-
-            assert(freeSetCurrentItr != freeSetBySize.end());
-            assert(freeSetNextItr != freeSetBySize.end());
-
-            current->second = next->second;
-
-            freeSetBySize.erase(freeSetCurrentItr);
-            freeSetBySize.erase(freeSetNextItr);
-
-            freeSetBySize.insert(current);
-
-            current = freeList.erase(next);
-            continue;
+        if (chunkIndices.second == nextBeginIndex) {
+            freeSetBySize.erase(freeSetItr);
+            freeSetBySize.erase(nextItr);
+            freeSetBySize.emplace(beginIndex, nextEndIndex);
         }
-
-        current++;
     }
 }
 
@@ -148,16 +107,9 @@ std::ostream &operator<<(std::ostream &os, const MemoryPool &pool) {
         os << (i ? "X" : "-");
     }
 
-    os << "\nFree List: ";
-
-    for (const auto& [beginIndex, endIndex] : pool.freeList) {
-        os << "[" << beginIndex << ", " << endIndex << ") ";
-    }
-
     os << "\nFree Set:  ";
 
-    for (const auto itr : pool.freeSetBySize) {
-        auto [beginIndex, endIndex] = *itr;
+    for (const auto [beginIndex, endIndex] : pool.freeSetBySize) {
         os << "[" << beginIndex << ", " << endIndex << ") ";
     }
 
@@ -173,7 +125,7 @@ unsigned MemoryPool::getNumAllocations() const {
 unsigned MemoryPool::getNumFreeChunks() const {
     unsigned numFreeChunks = 0;
 
-    for (const auto& [beginIndex, endIndex] : freeList) {
+    for (const auto& [beginIndex, endIndex] : freeSetBySize) {
         numFreeChunks += endIndex - beginIndex;
     }
 

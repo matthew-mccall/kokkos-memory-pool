@@ -21,11 +21,9 @@ class CompareFreeIndices {
 public:
     using is_transparent = void; // https://www.fluentcpp.com/2017/06/09/search-set-another-type-key/
 
-    bool operator()(FreeListT::iterator lhs, FreeListT::iterator rhs) const;
-    bool operator()(FreeListT::iterator lhs, size_t rhs) const;
-    bool operator()(size_t lhs, FreeListT::iterator rhs) const;
-    bool operator()(FreeListT::iterator lhs, IndexPair rhs) const;
-    bool operator()(IndexPair lhs, FreeListT::iterator rhs) const;
+    bool operator()(IndexPair lhs, IndexPair rhs) const;
+    bool operator()(IndexPair lhs, size_t rhs) const;
+    bool operator()(size_t lhs, IndexPair rhs) const;
 };
 
 class MemoryPool {
@@ -47,8 +45,7 @@ public:
 
 private:
     Kokkos::View<uint8_t*> pool;
-    FreeListT freeList;
-    std::multiset<FreeListT::iterator, CompareFreeIndices> freeSetBySize;
+    std::multiset<IndexPair, CompareFreeIndices> freeSetBySize;
     std::map<uint8_t*, IndexPair> allocations;
 };
 

@@ -201,7 +201,6 @@ TEST_CASE("Pool works under fragmentation", "[MemoryPool][allocation][deallocati
     constexpr size_t NUMBER_OF_INTS_PER_CHUNK = MemoryPool::DEFAULT_CHUNK_SIZE / sizeof(int);
 
     MultiPool pool(FRAGMENT_TEST_POOL_SIZE);
-
     std::vector<Kokkos::View<int*>> views(FRAGMENT_TEST_POOL_SIZE);
 
     for (auto& view : views) {
@@ -226,7 +225,7 @@ TEST_CASE("Pool works under fragmentation", "[MemoryPool][allocation][deallocati
     }
 
     CAPTURE(pool);
-    REQUIRE(pool.getNumFreeChunks() == (FRAGMENT_TEST_POOL_SIZE - (FRAGMENT_TEST_POOL_SIZE / deallocStep) - 1));
+    REQUIRE(pool.getNumFreeChunks() == (int)(FRAGMENT_TEST_POOL_SIZE * ((float)(deallocStep - 1) / deallocStep)));
 
     for (unsigned i = 0; i < views.size(); i++) {
         if (i % deallocStep != 0) {
@@ -243,7 +242,7 @@ TEST_CASE("Pool works under fragmentation", "[MemoryPool][allocation][deallocati
 }
 
 TEST_CASE("Benchmarks", "[!benchmark]") {
-    constexpr size_t NUMBER_OF_VIEWS = 10'000;
+    constexpr size_t NUMBER_OF_VIEWS = 100'000;
     constexpr size_t SIZE_OF_VIEWS = 1024;
 
     const size_t TOTAL_CHUNK_SIZE = MemoryPool::getRequiredChunks(sizeof(int) * SIZE_OF_VIEWS) * NUMBER_OF_VIEWS;
@@ -274,7 +273,43 @@ TEST_CASE("Benchmarks", "[!benchmark]") {
         return views.size();
     };
 
-    BENCHMARK("Allocating under heavy fragmentation") {
+
+}
+
+TEST_CASE("Fragmentation Benchmarks", "[!benchmark][fragmentation]") {
+    constexpr size_t NUMBER_OF_VIEWS = 10'000;
+    constexpr size_t SIZE_OF_VIEWS = 1024;
+    const size_t INITIAL_CHUNKS_PER_VIEW = MemoryPool::getRequiredChunks(sizeof(int) * SIZE_OF_VIEWS);
+
+    const size_t TOTAL_CHUNK_SIZE = INITIAL_CHUNKS_PER_VIEW * NUMBER_OF_VIEWS;
+
+    std::locale loc("en_US.UTF-8"); // For thousands separator
+
+    int deallocStep = GENERATE(range(2, 5));
+    int reallocFill = GENERATE_COPY(range(1, deallocStep));
+
+    BENCHMARK(fmt::format(loc, "Kokkos Allocation of {:L} Views of {:L} ints with {:L} free chunks between allocations and {:L} chunks requested in following allocations", NUMBER_OF_VIEWS, SIZE_OF_VIEWS, (deallocStep - 1) * INITIAL_CHUNKS_PER_VIEW, reallocFill * INITIAL_CHUNKS_PER_VIEW)) {
+        std::vector<Kokkos::View<int*>> views(NUMBER_OF_VIEWS);
+
+        for (auto& view : views) {
+          view = Kokkos::View<int*>("view", SIZE_OF_VIEWS);
+          REQUIRE(view.size() == SIZE_OF_VIEWS);
+        }
+
+        for (unsigned i = 0; i < views.size(); i++) {
+          if (i % deallocStep != 0) {
+              CAPTURE(i);
+              CAPTURE(deallocStep);
+              CAPTURE(reallocFill);
+              views[i] = Kokkos::View<int*>("view", SIZE_OF_VIEWS * reallocFill);
+              REQUIRE(views[i].size() == SIZE_OF_VIEWS * reallocFill);
+          }
+        }
+
+        return views.size();
+  };
+
+    BENCHMARK(fmt::format(loc, "Fragmented MultiPool Allocation of {:L} Views of {:L} ints with {:L} free chunks between allocations and {:L} chunks requested in following allocations", NUMBER_OF_VIEWS, SIZE_OF_VIEWS, (deallocStep - 1) * INITIAL_CHUNKS_PER_VIEW, reallocFill * INITIAL_CHUNKS_PER_VIEW)) {
         MultiPool pool(TOTAL_CHUNK_SIZE);
         std::vector<Kokkos::View<int*>> views(NUMBER_OF_VIEWS);
 
@@ -285,18 +320,28 @@ TEST_CASE("Benchmarks", "[!benchmark]") {
 
         EXPECT_CHUNKS_AND_ALLOCS_IN_POOL(pool, TOTAL_CHUNK_SIZE, NUMBER_OF_VIEWS);
 
-        for (unsigned i = 0; i < NUMBER_OF_VIEWS; i+= 2) {
-            pool.deallocateView<int>(views[i]);
+        for (unsigned i = 0; i < views.size(); i++) {
+            if (i % deallocStep != 0) {
+                CAPTURE(i);
+                CAPTURE(deallocStep);
+                pool.deallocateView<int>(views[i]);
+                unsigned expectedChunks = (((i / deallocStep) * (deallocStep - 1)) + (i % deallocStep)) * INITIAL_CHUNKS_PER_VIEW;
+                REQUIRE(pool.getNumFreeChunks() == expectedChunks);
+            }
         }
 
-        EXPECT_CHUNKS_AND_ALLOCS_IN_POOL(pool, TOTAL_CHUNK_SIZE / 2, NUMBER_OF_VIEWS / 2);
+       REQUIRE(pool.getNumFreeChunks() == static_cast<int>(NUMBER_OF_VIEWS * (static_cast<float>(deallocStep - 1) / deallocStep)) * INITIAL_CHUNKS_PER_VIEW);
 
-        for (unsigned i = 0; i < NUMBER_OF_VIEWS; i+= 2) {
-            views[i] = pool.allocateView<int>(SIZE_OF_VIEWS);
-            REQUIRE(views[i].size() == SIZE_OF_VIEWS);
+        for (unsigned i = 0; i < views.size(); i++) {
+            if (i % deallocStep != 0) {
+                CAPTURE(i);
+                CAPTURE(deallocStep);
+                CAPTURE(reallocFill);
+                views[i] = pool.allocateView<int>(SIZE_OF_VIEWS * reallocFill);
+                REQUIRE(views[i].size() == SIZE_OF_VIEWS * reallocFill);
+            }
         }
 
-        EXPECT_CHUNKS_AND_ALLOCS_IN_POOL(pool, TOTAL_CHUNK_SIZE, NUMBER_OF_VIEWS);
         return views.size();
     };
 }

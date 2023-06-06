@@ -2,12 +2,14 @@
 // Created by Matthew McCall on 5/23/23.
 //
 
+#include <locale>
+
 #include "catch2/catch_session.hpp"
 #include "catch2/catch_test_macros.hpp"
 #include "catch2/benchmark/catch_benchmark.hpp"
 #include "catch2/generators/catch_generators.hpp"
 
-#include "fmt/core.h"
+#include "fmt/format.h"
 
 #include "MemoryPool/MemoryPool.hpp"
 
@@ -209,7 +211,9 @@ TEST_CASE("Benchmarks", "[!benchmark]") {
 
     const size_t TOTAL_CHUNK_SIZE = MemoryPool::getRequiredChunks(sizeof(int) * SIZE_OF_VIEWS) * NUMBER_OF_VIEWS;
 
-    BENCHMARK(fmt::format("Kokkos Allocating {:L} Views of {:L} ints", NUMBER_OF_VIEWS, SIZE_OF_VIEWS)) {
+    std::locale loc("en_US.UTF-8"); // For thousands separator
+
+    BENCHMARK(fmt::format(loc, "Kokkos Allocating {:L} Views of {:L} ints", NUMBER_OF_VIEWS, SIZE_OF_VIEWS)) {
         std::vector<Kokkos::View<int[SIZE_OF_VIEWS]>> views(NUMBER_OF_VIEWS);
 
         for (auto& view : views) {
@@ -220,7 +224,7 @@ TEST_CASE("Benchmarks", "[!benchmark]") {
         return views.size();
     };
 
-    BENCHMARK(fmt::format("MultiPool Allocation {:L} Views of {:L} ints", NUMBER_OF_VIEWS, SIZE_OF_VIEWS)) {
+    BENCHMARK(fmt::format(loc, "MultiPool Allocation {:L} Views of {:L} ints", NUMBER_OF_VIEWS, SIZE_OF_VIEWS)) {
         MultiPool pool(TOTAL_CHUNK_SIZE);
         std::vector<Kokkos::View<int[SIZE_OF_VIEWS]>> views(NUMBER_OF_VIEWS);
 

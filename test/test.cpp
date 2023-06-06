@@ -25,11 +25,11 @@ constexpr size_t TEST_POOL_SIZE = 4;
     REQUIRE(pool.getNumFreeChunks() == pool.getNumChunks() - chunks)
 
 struct VeryLargeStruct {
-    uint8_t data[DEFAULT_CHUNK_SIZE * TEST_POOL_SIZE];
+    uint8_t data[MemoryPool::DEFAULT_CHUNK_SIZE * TEST_POOL_SIZE];
 };
 
 struct LargeStruct {
-    uint8_t data[DEFAULT_CHUNK_SIZE * TEST_POOL_SIZE / 2];
+    uint8_t data[MemoryPool::DEFAULT_CHUNK_SIZE * TEST_POOL_SIZE / 2];
 };
 
 class TestControl : public Catch::EventListenerBase {
@@ -193,11 +193,11 @@ TEST_CASE("Memory Pool allocates and deallocates custom types successfully", "[M
 TEST_CASE("Pool works under fragmentation", "[MemoryPool][allocation][deallocation][primitives][fragmentation]") {
     MultiPool pool(25); // 512 bytes
 
-    std::vector<Kokkos::View<int[DEFAULT_CHUNK_SIZE / sizeof(int)]>> views(25);
+    std::vector<Kokkos::View<int[MemoryPool::DEFAULT_CHUNK_SIZE / sizeof(int)]>> views(25);
 
     for (auto& view : views) {
-        view = pool.allocateView<int>(DEFAULT_CHUNK_SIZE / sizeof(int));
-        REQUIRE(view.size() == DEFAULT_CHUNK_SIZE / sizeof(int));
+        view = pool.allocateView<int>(MemoryPool::DEFAULT_CHUNK_SIZE / sizeof(int));
+        REQUIRE(view.size() == MemoryPool::DEFAULT_CHUNK_SIZE / sizeof(int));
     }
 
     CAPTURE(pool);

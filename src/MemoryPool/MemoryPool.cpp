@@ -199,7 +199,7 @@ size_t MemoryPool::getRequiredChunks(size_t n) {
 }
 
 size_t MultiPool::getChunkSize() const {
-    return DEFAULT_CHUNK_SIZE;
+    return MemoryPool::DEFAULT_CHUNK_SIZE;
 }
 
 MultiPool::MultiPool(size_t initialChunks) {

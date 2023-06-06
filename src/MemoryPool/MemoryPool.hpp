@@ -14,8 +14,6 @@
 
 #include "Kokkos_Core.hpp"
 
-constexpr size_t DEFAULT_CHUNK_SIZE = 128;
-
 using IndexPair = std::pair<size_t, size_t>;
 using FreeListT = std::list<IndexPair>;
 
@@ -44,6 +42,7 @@ public:
     unsigned getNumAllocatedChunks() const;
     unsigned getNumChunks() const;
 
+    static constexpr size_t DEFAULT_CHUNK_SIZE = 128;
     static size_t getRequiredChunks(size_t n);
 
 private:

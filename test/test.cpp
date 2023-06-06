@@ -8,6 +8,8 @@
 #include "catch2/catch_test_macros.hpp"
 #include "catch2/benchmark/catch_benchmark.hpp"
 #include "catch2/generators/catch_generators.hpp"
+#include "catch2/generators/catch_generators_adapters.hpp"
+#include "catch2/generators/catch_generators_range.hpp"
 #include "catch2/reporters/catch_reporter_event_listener.hpp"
 #include "catch2/reporters/catch_reporter_registrars.hpp"
 
@@ -28,9 +30,13 @@ struct VeryLargeStruct {
     uint8_t data[MemoryPool::DEFAULT_CHUNK_SIZE * TEST_POOL_SIZE];
 };
 
+static_assert(sizeof(VeryLargeStruct) == MemoryPool::DEFAULT_CHUNK_SIZE * TEST_POOL_SIZE);
+
 struct LargeStruct {
     uint8_t data[MemoryPool::DEFAULT_CHUNK_SIZE * TEST_POOL_SIZE / 2];
 };
+
+static_assert(sizeof(LargeStruct) == MemoryPool::DEFAULT_CHUNK_SIZE * TEST_POOL_SIZE / 2);
 
 class TestControl : public Catch::EventListenerBase {
 public:
@@ -191,30 +197,49 @@ TEST_CASE("Memory Pool allocates and deallocates custom types successfully", "[M
 }
 
 TEST_CASE("Pool works under fragmentation", "[MemoryPool][allocation][deallocation][primitives][fragmentation]") {
-    MultiPool pool(25); // 512 bytes
+    constexpr unsigned FRAGMENT_TEST_POOL_SIZE = 25;
+    constexpr size_t NUMBER_OF_INTS_PER_CHUNK = MemoryPool::DEFAULT_CHUNK_SIZE / sizeof(int);
 
-    std::vector<Kokkos::View<int[MemoryPool::DEFAULT_CHUNK_SIZE / sizeof(int)]>> views(25);
+    MultiPool pool(FRAGMENT_TEST_POOL_SIZE);
+
+    std::vector<Kokkos::View<int*>> views(FRAGMENT_TEST_POOL_SIZE);
 
     for (auto& view : views) {
-        view = pool.allocateView<int>(MemoryPool::DEFAULT_CHUNK_SIZE / sizeof(int));
-        REQUIRE(view.size() == MemoryPool::DEFAULT_CHUNK_SIZE / sizeof(int));
+        view = pool.allocateView<int>(NUMBER_OF_INTS_PER_CHUNK);
+        REQUIRE(view.size() == NUMBER_OF_INTS_PER_CHUNK);
     }
 
-    CAPTURE(pool);
-    EXPECT_CHUNKS_AND_ALLOCS_IN_POOL(pool, 25, 25);
+    EXPECT_CHUNKS_AND_ALLOCS_IN_POOL(pool, FRAGMENT_TEST_POOL_SIZE, FRAGMENT_TEST_POOL_SIZE);
 
-    unsigned step = GENERATE(2, 3, 4, 5);
+    int deallocStep = GENERATE(range(2, 5));
+    int reallocFill = GENERATE_COPY(range(1, deallocStep));
 
     for (unsigned i = 0; i < views.size(); i++) {
-        if (i % step != 0) {
+        if (i % deallocStep != 0) {
             CAPTURE(i);
-            CAPTURE(step);
+            CAPTURE(deallocStep);
             pool.deallocateView<int>(views[i]);
             CAPTURE(pool);
-            unsigned expectedChunks = ((i / step) * (step - 1)) + (i % step);
+            unsigned expectedChunks = ((i / deallocStep) * (deallocStep - 1)) + (i % deallocStep);
             REQUIRE(pool.getNumFreeChunks() == expectedChunks);
         }
     }
+
+    CAPTURE(pool);
+    REQUIRE(pool.getNumFreeChunks() == (FRAGMENT_TEST_POOL_SIZE - (FRAGMENT_TEST_POOL_SIZE / deallocStep) - 1));
+
+    for (unsigned i = 0; i < views.size(); i++) {
+        if (i % deallocStep != 0) {
+            CAPTURE(i);
+            CAPTURE(deallocStep);
+            CAPTURE(reallocFill);
+            views[i] = pool.allocateView<int>(NUMBER_OF_INTS_PER_CHUNK * reallocFill);
+            CAPTURE(pool);
+            REQUIRE(views[i].size() == NUMBER_OF_INTS_PER_CHUNK * reallocFill);
+        }
+    }
+
+    CAPTURE(pool);
 }
 
 TEST_CASE("Benchmarks", "[!benchmark]") {

@@ -8,3 +8,4 @@ A implementation of a memory pool in Kokkos.
 4. Build `cmake --build build`
 5. Run the tests `cd build && ctest`
 6. To run the benchmarks `./kokkos_memory_pool "[\!benchmark]"`
+7. For CSV output when running the benchmarks `./kokkos_memory_pool "[\!benchmark]" --success --reporter csv`

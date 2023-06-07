@@ -84,10 +84,7 @@ public:
                 std::string message = log.message.substr(3);
 
                 auto& sectionLogs = logs[currentSectionName];
-
-                if (sectionLogs.find(message) == sectionLogs.end()) {
-                    sectionLogs.insert(message);
-                }
+                sectionLogs.insert(message);
             }
         }
     }
@@ -339,11 +336,13 @@ TEST_CASE("Fragmentation Benchmarks", "[!benchmark][fragmentation]") {
     int deallocStep = GENERATE(range(2, 5));
     int reallocFill = GENERATE_COPY(range(1, deallocStep));
 
-    SECTION(fmt::format(loc, "Kokkos Allocation of {:L} Views of {:L} ints with {:L} free chunks between allocations and {:L} chunks requested in following allocations", NUMBER_OF_VIEWS, SIZE_OF_VIEWS, (deallocStep - 1) * INITIAL_CHUNKS_PER_VIEW, reallocFill * INITIAL_CHUNKS_PER_VIEW)) {
+    std::string kokkosBenchmarkName = fmt::format(loc, "Kokkos Allocation of {:L} Views of {:L} ints with {:L} free chunks between allocations and {:L} chunks requested in following allocations", NUMBER_OF_VIEWS, SIZE_OF_VIEWS, (deallocStep - 1) * INITIAL_CHUNKS_PER_VIEW, reallocFill * INITIAL_CHUNKS_PER_VIEW);
+
+    SECTION(kokkosBenchmarkName) {
         // CSV output
         INFO(fmt::format("csvKokkos,{},{},{},{}", NUMBER_OF_VIEWS, SIZE_OF_VIEWS, (deallocStep - 1) * INITIAL_CHUNKS_PER_VIEW, reallocFill * INITIAL_CHUNKS_PER_VIEW));
 
-        BENCHMARK(fmt::format(loc, "Kokkos Allocation of {:L} Views of {:L} ints with {:L} free chunks between allocations and {:L} chunks requested in following allocations", NUMBER_OF_VIEWS, SIZE_OF_VIEWS, (deallocStep - 1) * INITIAL_CHUNKS_PER_VIEW, reallocFill * INITIAL_CHUNKS_PER_VIEW)) {
+        BENCHMARK(std::move(kokkosBenchmarkName)) {
             std::vector<Kokkos::View<int *>> views(NUMBER_OF_VIEWS);
 
             for (auto &view: views) {
@@ -365,12 +364,13 @@ TEST_CASE("Fragmentation Benchmarks", "[!benchmark][fragmentation]") {
         };
     }
 
+    std::string multiPoolBenchmarkName = fmt::format(loc, "Fragmented MultiPool Allocation of {:L} Views of {:L} ints with {:L} free chunks between allocations and {:L} chunks requested in following allocations", NUMBER_OF_VIEWS, SIZE_OF_VIEWS, (deallocStep - 1) * INITIAL_CHUNKS_PER_VIEW, reallocFill * INITIAL_CHUNKS_PER_VIEW);
 
-    SECTION(fmt::format(loc, "Fragmented MultiPool Allocation of {:L} Views of {:L} ints with {:L} free chunks between allocations and {:L} chunks requested in following allocations", NUMBER_OF_VIEWS, SIZE_OF_VIEWS, (deallocStep - 1) * INITIAL_CHUNKS_PER_VIEW, reallocFill * INITIAL_CHUNKS_PER_VIEW)) {
+    SECTION(multiPoolBenchmarkName) {
         // CSV output
         INFO(fmt::format("csvMultiPool,{},{},{},{}", NUMBER_OF_VIEWS, SIZE_OF_VIEWS, (deallocStep - 1) * INITIAL_CHUNKS_PER_VIEW, reallocFill * INITIAL_CHUNKS_PER_VIEW));
 
-        BENCHMARK(fmt::format(loc, "Fragmented MultiPool Allocation of {:L} Views of {:L} ints with {:L} free chunks between allocations and {:L} chunks requested in following allocations", NUMBER_OF_VIEWS, SIZE_OF_VIEWS, (deallocStep - 1) * INITIAL_CHUNKS_PER_VIEW, reallocFill * INITIAL_CHUNKS_PER_VIEW)) {
+        BENCHMARK(std::move(multiPoolBenchmarkName)) {
             MultiPool pool(TOTAL_CHUNK_SIZE);
             std::vector<Kokkos::View<int *>> views(NUMBER_OF_VIEWS);
 

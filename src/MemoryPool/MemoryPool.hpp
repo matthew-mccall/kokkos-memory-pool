@@ -26,6 +26,10 @@ public:
     bool operator()(size_t lhs, IndexPair rhs) const;
 };
 
+
+using MultiSetBySizeT = std::multiset<IndexPair, CompareFreeIndices>;
+using SetByIndexT = std::set<IndexPair>;
+
 class MemoryPool {
 public:
     explicit MemoryPool(size_t numChunks);
@@ -39,13 +43,18 @@ public:
     unsigned getNumFreeChunks() const;
     unsigned getNumAllocatedChunks() const;
     unsigned getNumChunks() const;
+    unsigned getNumFreeFragments() const;
 
     static constexpr size_t DEFAULT_CHUNK_SIZE = 128;
     static size_t getRequiredChunks(size_t n);
 
 private:
+    std::pair<MultiSetBySizeT::iterator, SetByIndexT::iterator> insertIntoSets(IndexPair indices);
+    void removeFromSets(IndexPair indices);
+
     Kokkos::View<uint8_t*> pool;
-    std::multiset<IndexPair, CompareFreeIndices> freeSetBySize;
+    MultiSetBySizeT freeSetBySize; // For finding free chunks logarithmically
+    SetByIndexT freeSetByIndex; // For merging adjacent free chunks
     std::map<uint8_t*, IndexPair> allocations;
 };
 
@@ -72,6 +81,7 @@ public:
     unsigned getNumFreeChunks() const;
     unsigned getNumAllocatedChunks() const;
     unsigned getNumChunks() const;
+    unsigned getNumFreeFragments() const;
     size_t getChunkSize() const;
 
 private:

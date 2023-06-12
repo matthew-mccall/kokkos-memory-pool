@@ -1,6 +1,7 @@
 //
 // Created by Matthew McCall on 5/22/23.
 //
+#include <cassert>
 #include <iterator>
 #include <vector>
 
@@ -30,8 +31,21 @@ bool CompareFreeIndices::operator()(size_t lhs, IndexPair rhs) const {
 }
 
 MemoryPool::MemoryPool(size_t numChunks) : pool("Memory Pool", numChunks * DEFAULT_CHUNK_SIZE) {
-    auto initialChunkIndices = std::make_pair(0, numChunks);
-    freeSetBySize.insert(initialChunkIndices);
+    insertIntoSets({0, numChunks});
+}
+
+std::pair<MultiSetBySizeT::iterator, SetByIndexT::iterator> MemoryPool::insertIntoSets(IndexPair indices) {
+    auto setBySizeItr = freeSetBySize.insert(indices);
+    auto [setByIndexItr, inserted] = freeSetByIndex.insert(indices);
+    
+    assert(inserted);
+
+    return {setBySizeItr, setByIndexItr};
+}
+
+void MemoryPool::removeFromSets(IndexPair indices) {
+    freeSetBySize.erase(indices);
+    freeSetByIndex.erase(indices);
 }
 
 uint8_t *MemoryPool::allocate(size_t n) {
@@ -49,10 +63,10 @@ uint8_t *MemoryPool::allocate(size_t n) {
 
     auto [beginIndex, endIndex] = *freeSetItr;
 
-    freeSetBySize.erase(freeSetItr);
+    removeFromSets(*freeSetItr);
 
     if (endIndex - beginIndex != requestedChunks) {
-        freeSetBySize.emplace(beginIndex + requestedChunks, endIndex);
+        insertIntoSets({beginIndex + requestedChunks, endIndex});
     }
 
     uint8_t* ptr = pool.data() + (beginIndex * DEFAULT_CHUNK_SIZE);
@@ -66,30 +80,30 @@ void MemoryPool::deallocate(uint8_t *data) {
     assert(allocationsItr != allocations.end());
     auto [ptr, chunkIndices] = *allocationsItr; // [begin, end)
 
-    auto freeSetItr = freeSetBySize.insert(chunkIndices);
+    auto [freeSetBySizeItr, freeSetByIndexItr] = insertIntoSets(chunkIndices);
     allocations.erase(allocationsItr);
 
     // Merge adjacent free chunks
-    if (freeSetItr != freeSetBySize.begin()) {
-        auto prevItr = std::prev(freeSetItr);
+    if (freeSetByIndexItr != freeSetByIndex.begin()) {
+        auto prevItr = std::prev(freeSetByIndexItr);
         auto [prevBeginIndex, prevEndIndex] = *prevItr;
 
         if (prevEndIndex == chunkIndices.first) {
-            freeSetBySize.erase(prevItr);
-            freeSetBySize.erase(freeSetItr);
-            freeSetItr = freeSetBySize.emplace(prevBeginIndex, chunkIndices.second);
+            removeFromSets(*prevItr);
+            removeFromSets(chunkIndices);
+            freeSetByIndexItr = insertIntoSets({prevBeginIndex, chunkIndices.second}).second;
         }
     }
 
-    if (std::next(freeSetItr) != freeSetBySize.end()) {
-        auto nextItr = std::next(freeSetItr);
+    if (std::next(freeSetByIndexItr) != freeSetByIndex.end()) {
+        auto nextItr = std::next(freeSetByIndexItr);
         auto [nextBeginIndex, nextEndIndex] = *nextItr;
-        auto [beginIndex, endIndex] = *freeSetItr;
+        auto [beginIndex, endIndex] = *freeSetByIndexItr;
 
         if (chunkIndices.second == nextBeginIndex) {
-            freeSetBySize.erase(freeSetItr);
-            freeSetBySize.erase(nextItr);
-            freeSetBySize.emplace(beginIndex, nextEndIndex);
+            removeFromSets(*freeSetByIndexItr);
+            removeFromSets(*nextItr);
+            insertIntoSets({beginIndex, nextEndIndex});
         }
     }
 }
@@ -146,12 +160,26 @@ unsigned MemoryPool::getNumChunks() const {
     return pool.size() / DEFAULT_CHUNK_SIZE;
 }
 
+unsigned MemoryPool::getNumFreeFragments() const {
+    return freeSetBySize.size();
+}
+
 size_t MemoryPool::getRequiredChunks(size_t n) {
     return (n / DEFAULT_CHUNK_SIZE) + (n % DEFAULT_CHUNK_SIZE ? 1 : 0);
 }
 
 size_t MultiPool::getChunkSize() const {
     return MemoryPool::DEFAULT_CHUNK_SIZE;
+}
+
+unsigned MultiPool::getNumFreeFragments() const {
+    unsigned numFreeFragments = 0;
+
+    for (const auto& pool : pools) {
+        numFreeFragments += pool.getNumFreeFragments();
+    }
+
+    return numFreeFragments;
 }
 
 MultiPool::MultiPool(size_t initialChunks) {

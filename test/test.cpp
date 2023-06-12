@@ -246,6 +246,26 @@ TEST_CASE("Memory Pool allocates and deallocates custom types successfully", "[M
     }
 }
 
+TEST_CASE("Memory pool merges adjacent free chunks of different sizes correctly") {
+    MultiPool pool(TEST_POOL_SIZE); // 512 bytes
+
+    auto view = pool.allocateView<int>(1);
+    REQUIRE(view.size() == 1);
+
+    auto view2 = pool.allocateView<LargeStruct>(1);
+    REQUIRE(view2.size() == 1);
+
+    auto view3 = pool.allocateView<int>(1);
+    REQUIRE(view3.size() == 1);
+
+    pool.deallocateView(view);
+    pool.deallocateView(view3);
+    pool.deallocateView(view2);
+
+    CAPTURE(pool);
+    REQUIRE(pool.getNumFreeFragments() == 1);
+}
+
 TEST_CASE("Pool works under fragmentation", "[MemoryPool][allocation][deallocation][primitives][fragmentation]") {
     constexpr unsigned FRAGMENT_TEST_POOL_SIZE = 25;
     constexpr size_t NUMBER_OF_INTS_PER_CHUNK = MemoryPool::DEFAULT_CHUNK_SIZE / sizeof(int);
